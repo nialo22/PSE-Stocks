@@ -23,6 +23,7 @@
     dropIndicator: $('#drop-indicator'),
     search: $('#search-input'),
     results: $('#search-results'),
+    browse: $('#browse'),
     addTarget: $('#add-target'),
     addTargetWrap: $('#add-target-wrap'),
     addSection: $('#add-section'),
@@ -72,6 +73,9 @@
     settings: { interval: 30, sort: null, asc: false, addTarget: null, ...load(SETTINGS_KEY, {}) },
     quotes: new Map(),
     history: new Map(),
+    companies: null,
+    companiesState: 'loading',
+    browseKey: null,
     editingSection: null,
     drag: null,
     renderPending: false,
@@ -374,7 +378,7 @@
     if (!section.collapsed) {
       body = section.items.length
         ? sortedItems(section.items).map(rowHtml).join('')
-        : `<tr class="section-empty"><td></td><td colspan="${COLUMN_COUNT - 1}" class="muted">No stocks yet. Add one from the search box, or drag a stock here.</td></tr>`;
+        : `<tr class="section-empty"><td></td><td colspan="${COLUMN_COUNT - 1}" class="muted">No stocks yet. Search or pick from the list above, or drag a stock here.</td></tr>`;
     }
     return `<tbody class="section${section.collapsed ? ' collapsed' : ''}" data-section-id="${id}">${head}${body}</tbody>`;
   }
@@ -414,6 +418,7 @@
     els.table.insertAdjacentHTML('beforeend', state.sections.map(sectionHtml).join(''));
     renderSortHeaders();
     renderAddTarget();
+    renderBrowse();
     for (const q of state.quotes.values()) q.flash = '';
 
     if (focusKey) els.table.querySelector(`.drag-handle${focusKey}`)?.focus();
@@ -705,6 +710,65 @@
   els.table.addEventListener('pointercancel', (e) => endDrag(e, false));
 
   // ---------------------------------------------------------------------
+  // Browse every listed stock (A–Z dropdown)
+  // ---------------------------------------------------------------------
+
+  async function loadCompanies() {
+    state.companiesState = 'loading';
+    state.browseKey = null;
+    renderBrowse();
+    try {
+      state.companies = await api('/api/companies');
+      state.companiesState = 'ready';
+    } catch {
+      state.companiesState = 'error';
+    }
+    state.browseKey = null;
+    renderBrowse();
+  }
+
+  function renderBrowse() {
+    if (state.companiesState !== 'ready') {
+      const message = state.companiesState === 'loading'
+        ? 'Loading all PSE stocks…'
+        : "Couldn't load the stock list. Click to retry.";
+      els.browse.innerHTML = `<option value="">${message}</option>`;
+      els.browse.disabled = state.companiesState === 'loading';
+      return;
+    }
+    // Rebuild only when the watchlist's stocks change, so a price refresh
+    // never closes the dropdown while someone is scrolling it.
+    const added = new Set(allItems().map((i) => i.symbol));
+    const key = [...added].sort().join(',');
+    if (key === state.browseKey) return;
+    state.browseKey = key;
+
+    const groups = new Map();
+    for (const c of state.companies) {
+      const letter = /^[A-Z]/.test(c.symbol) ? c.symbol[0] : '#';
+      if (!groups.has(letter)) groups.set(letter, []);
+      groups.get(letter).push(c);
+    }
+    const optgroups = [...groups].map(([letter, list]) => `<optgroup label="${letter}">${list.map((c) => {
+      const isAdded = added.has(c.symbol);
+      return `<option value="${escapeHtml(c.symbol)}"${isAdded ? ' disabled' : ''}>${escapeHtml(c.symbol)} — ${escapeHtml(c.name)}${isAdded ? ' ✓' : ''}</option>`;
+    }).join('')}</optgroup>`).join('');
+    els.browse.innerHTML = `<option value="">Or pick from all ${state.companies.length} PSE stocks (A–Z)</option>${optgroups}`;
+    els.browse.disabled = false;
+    els.browse.value = '';
+  }
+
+  els.browse.addEventListener('change', () => {
+    const company = state.companies?.find((c) => c.symbol === els.browse.value);
+    els.browse.value = '';
+    if (company) addToWatchlist(company);
+  });
+
+  els.browse.addEventListener('pointerdown', () => {
+    if (state.companiesState === 'error') loadCompanies();
+  });
+
+  // ---------------------------------------------------------------------
   // Search with autocomplete
   // ---------------------------------------------------------------------
 
@@ -848,6 +912,7 @@
   api('/api/config').then((cfg) => { els.demo.hidden = !cfg.demo; }).catch(() => {});
 
   saveSections();
+  loadCompanies();
   renderSchedule();
   renderClock();
   setInterval(renderClock, 15000);

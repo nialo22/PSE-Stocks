@@ -7,6 +7,9 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 - **Watchlist**: search by symbol or company name, add with a click or Enter, and remove with ×.
   The list is saved in your browser, so it's still there next time you open the app.
+- **Browse all stocks**: next to the search box is a dropdown of every PSE-listed stock,
+  A–Z by symbol and grouped by first letter. Scroll and pick one to add it. Stocks already
+  on your watchlist are marked ✓ and greyed out.
 - **Sections**: group stocks into your own sections (for example "Banks" or "Long-term").
   Use **+ New section** to create one and **Add to** to pick where new stocks go. Rename a
   section with the pencil button or by double-clicking its name, collapse it with the arrow,
@@ -66,10 +69,11 @@ PSE Edge has no public API, and browsers can't call it directly from another sit
 | App endpoint                         | PSE Edge source                                           |
 | ------------------------------------ | --------------------------------------------------------- |
 | `GET /api/search?q=jollibee`         | `/autoComplete/searchCompanyNameSymbol.ax` (company search) |
+| `GET /api/companies`                 | `/companyDirectory/search.ax` (every listed company, all pages) |
 | `GET /api/quotes?symbols=JFC,ALI`    | `/companyPage/stockData.do` (stock data page, parsed from HTML) |
 | `GET /api/history?symbol=JFC&days=30`| `/common/DisclosureCht.ax` (daily price chart data)       |
 
-Quotes are cached for 15 seconds on the server, so several open tabs don't multiply
+The full company list is cached for 12 hours. Quotes are cached for 15 seconds on the server, so several open tabs don't multiply
 requests to PSE Edge. Companies with more than one listed security (for example common
 and preferred shares) are handled: the app picks the security that matches the symbol.
 

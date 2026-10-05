@@ -46,6 +46,12 @@
         <input id="search-input" type="search" placeholder="Add a stock (e.g. JFC, Ayala)" autocomplete="off" spellcheck="false">
         <ul id="search-results" class="search-results" role="listbox" hidden></ul>
       </div>
+      <div class="browse">
+        <label for="browse" class="visually-hidden">Or pick from all PSE-listed stocks</label>
+        <select id="browse" disabled>
+          <option value="">Loading all PSE stocks…</option>
+        </select>
+      </div>
       <div class="section-controls">
         <span id="add-target-wrap" hidden>
           <label class="muted" for="add-target">Add to</label>

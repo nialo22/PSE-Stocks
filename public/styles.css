@@ -160,8 +160,11 @@ code { font-size: 0.95em; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 20px 24px; }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.search { position: relative; flex: 1 1 340px; max-width: 520px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.toolbar .controls { margin-left: auto; }
+.search { position: relative; flex: 1 1 300px; max-width: 420px; }
+.browse { flex: 0 1 300px; min-width: 0; }
+#browse { width: 100%; padding: 9px 8px; }
 input[type="search"], select, .btn {
   font: inherit;
   color: var(--text);
@@ -357,6 +360,7 @@ footer { max-width: 1200px; margin: 0 auto; padding: 8px 24px 32px; font-size: 1
   .banner { padding: 10px 16px; }
   .hide-sm { display: none; }
   #clock { display: none; }
+  .browse { flex-basis: 100%; }
   .schedule-title .muted { display: none; }
   .phase { padding: 2px 7px; }
   th.handle-cell, td.handle-cell { width: 24px; padding-left: 2px; }

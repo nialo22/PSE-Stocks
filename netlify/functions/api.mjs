@@ -37,6 +37,9 @@ async function handle(url) {
       return json(200, (await getService().search(q)).slice(0, 20));
     }
 
+    case '/api/companies':
+      return json(200, await getService().companies());
+
     case '/api/quotes': {
       const symbols = (url.searchParams.get('symbols') || '').split(',').filter((s) => s.trim());
       if (symbols.length > MAX_SYMBOLS) {
