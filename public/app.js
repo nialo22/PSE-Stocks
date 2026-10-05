@@ -1,7 +1,8 @@
 'use strict';
 
 (() => {
-  const STORAGE_KEY = 'pse-stocks:watchlist';
+  const SECTIONS_KEY = 'pse-stocks:sections';
+  const LEGACY_WATCHLIST_KEY = 'pse-stocks:watchlist';
   const SETTINGS_KEY = 'pse-stocks:settings';
   const DEFAULT_WATCHLIST = [
     { symbol: 'JFC', name: 'Jollibee Foods Corporation' },
@@ -12,20 +13,27 @@
   ];
   // Polling slows down outside trading hours, when PSE Edge prices don't move.
   const CLOSED_MARKET_INTERVAL_S = 300;
+  // Columns in a stock row: drag handle, symbol, 9 data columns, remove.
+  const COLUMN_COUNT = 12;
 
   const $ = (sel) => document.querySelector(sel);
   const els = {
-    tbody: $('#watchlist tbody'),
     table: $('#watchlist'),
-    empty: $('#empty'),
+    tableWrap: $('.table-wrap'),
+    dropIndicator: $('#drop-indicator'),
     search: $('#search-input'),
     results: $('#search-results'),
+    addTarget: $('#add-target'),
+    addTargetWrap: $('#add-target-wrap'),
+    addSection: $('#add-section'),
     interval: $('#interval'),
     refresh: $('#refresh'),
     updated: $('#updated'),
     error: $('#error'),
     market: $('#market-status'),
+    nextEvent: $('#next-event'),
     clock: $('#clock'),
+    schedule: $('#schedule-phases'),
     demo: $('#demo-banner'),
   };
 
@@ -50,17 +58,33 @@
     }
   }
 
+  const newId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+  /** Loads the sections, upgrading the single flat list older versions saved. */
+  function loadSections() {
+    const saved = load(SECTIONS_KEY, null);
+    if (Array.isArray(saved) && saved.length) return saved;
+    return [{ id: newId(), name: 'My Watchlist', collapsed: false, items: load(LEGACY_WATCHLIST_KEY, DEFAULT_WATCHLIST) }];
+  }
+
   const state = {
-    watchlist: load(STORAGE_KEY, DEFAULT_WATCHLIST),
-    settings: { interval: 30, sort: null, asc: false, ...load(SETTINGS_KEY, {}) },
+    sections: loadSections(),
+    settings: { interval: 30, sort: null, asc: false, addTarget: null, ...load(SETTINGS_KEY, {}) },
     quotes: new Map(),
     history: new Map(),
+    editingSection: null,
+    drag: null,
+    renderPending: false,
     timer: null,
     loading: false,
   };
 
-  const saveWatchlist = () => save(STORAGE_KEY, state.watchlist);
+  const saveSections = () => save(SECTIONS_KEY, state.sections);
   const saveSettings = () => save(SETTINGS_KEY, state.settings);
+
+  const allItems = () => state.sections.flatMap((s) => s.items);
+  const findSection = (id) => state.sections.find((s) => s.id === id);
+  const sectionOf = (symbol) => state.sections.find((s) => s.items.some((i) => i.symbol === symbol));
 
   // ---------------------------------------------------------------------
   // Formatting
@@ -89,32 +113,90 @@
 
   const dirClass = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : '');
 
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
   // ---------------------------------------------------------------------
-  // Market hours (Asia/Manila). Approximate: ignores exchange holidays.
+  // Market schedule (Asia/Manila). Exchange holidays are not accounted for.
   // ---------------------------------------------------------------------
+
+  const hm = (h, m) => h * 60 + m;
+  const PHASES = [
+    { key: 'preopen', label: 'Pre-open', start: hm(9, 0), end: hm(9, 30) },
+    { key: 'trading', label: 'Trading', start: hm(9, 30), end: hm(12, 0) },
+    { key: 'recess', label: 'Lunch recess', start: hm(12, 0), end: hm(13, 0) },
+    { key: 'trading', label: 'Trading', start: hm(13, 0), end: hm(14, 45) },
+    { key: 'preclose', label: 'Pre-close', start: hm(14, 45), end: hm(14, 50) },
+    { key: 'runoff', label: 'Run-off', start: hm(14, 50), end: hm(15, 0) },
+  ];
+  const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function fmtClock(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')}`;
+  }
+
+  function fmtDuration(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h ? `${h}h ${m}m` : `${m}m`;
+  }
 
   function manilaNow() {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Manila', weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
     }).formatToParts(new Date());
     const get = (t) => parts.find((p) => p.type === t)?.value;
-    return { weekday: get('weekday'), minutes: (Number(get('hour')) % 24) * 60 + Number(get('minute')) };
+    return { day: WEEKDAYS.indexOf(get('weekday')), minutes: (Number(get('hour')) % 24) * 60 + Number(get('minute')) };
   }
 
-  function isMarketOpen() {
-    const { weekday, minutes } = manilaNow();
-    if (weekday === 'Sat' || weekday === 'Sun') return false;
-    return minutes >= 9 * 60 + 30 && minutes < 15 * 60 + 10;
+  /** Returns the current market phase (or null when closed) and what comes next. */
+  function marketState() {
+    const { day, minutes } = manilaNow();
+    const weekday = day >= 1 && day <= 5;
+    const index = weekday ? PHASES.findIndex((p) => minutes >= p.start && minutes < p.end) : -1;
+    if (index !== -1) {
+      const phase = PHASES[index];
+      const next = PHASES[index + 1];
+      const left = fmtDuration(phase.end - minutes);
+      return { phase, index, next: next ? `${next.label} in ${left}` : `Closes in ${left}` };
+    }
+    if (weekday && minutes < PHASES[0].start) {
+      return { phase: null, index: -1, next: `Pre-open in ${fmtDuration(PHASES[0].start - minutes)}` };
+    }
+    // After the close or on a weekend: the next session is the next weekday.
+    const nextDay = day === 5 || day === 6 ? 1 : (day + 1) % 7;
+    const when = nextDay === (day + 1) % 7 ? 'tomorrow' : WEEKDAYS[nextDay];
+    return { phase: null, index: -1, next: `Opens ${when} ${fmtClock(PHASES[0].start)} AM` };
+  }
+
+  /** Prices move from pre-open through run-off, except over the lunch recess. */
+  function isMarketActive() {
+    const { phase } = marketState();
+    return Boolean(phase && phase.key !== 'recess');
+  }
+
+  function renderSchedule() {
+    els.schedule.innerHTML = PHASES.map((p, i) => `
+      <li class="phase phase-${p.key}" data-index="${i}">
+        <span class="phase-label">${p.label}</span>
+        <span class="phase-time">${fmtClock(p.start)}–${fmtClock(p.end)}</span>
+      </li>`).join('');
   }
 
   function renderClock() {
-    const open = isMarketOpen();
-    els.market.textContent = open ? 'Market open' : 'Market closed';
-    els.market.classList.toggle('open', open);
-    els.market.title = 'Approximate: PSE trades weekdays about 9:30 AM to 3:00 PM Manila time; holidays are not accounted for.';
+    const { phase, index, next } = marketState();
+    els.market.textContent = phase ? phase.label : 'Closed';
+    els.market.className = `pill ${phase ? `phase-${phase.key}` : 'closed'}`;
+    els.nextEvent.textContent = next;
     els.clock.textContent = new Date().toLocaleTimeString('en-PH', {
       timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit',
     }) + ' Manila';
+    for (const li of els.schedule.children) {
+      li.classList.toggle('current', Number(li.dataset.index) === index);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -130,14 +212,15 @@
 
   async function refresh() {
     if (state.loading) return;
-    if (!state.watchlist.length) {
+    const items = allItems();
+    if (!items.length) {
       render();
       return;
     }
     state.loading = true;
     els.refresh.disabled = true;
     try {
-      const symbols = state.watchlist.map((w) => w.symbol).join(',');
+      const symbols = items.map((w) => w.symbol).join(',');
       const data = await api(`/api/quotes?symbols=${encodeURIComponent(symbols)}`);
       for (const q of data.quotes) {
         const prev = state.quotes.get(q.symbol);
@@ -146,10 +229,10 @@
           : '';
         state.quotes.set(q.symbol, q);
         // Fill in names for symbols saved before the name was known.
-        const item = state.watchlist.find((w) => w.symbol === q.symbol);
+        const item = allItems().find((w) => w.symbol === q.symbol);
         if (item && !item.name && q.name) {
           item.name = q.name;
-          saveWatchlist();
+          saveSections();
         }
       }
       els.error.hidden = true;
@@ -166,13 +249,13 @@
   }
 
   function loadMissingHistory() {
-    for (const { symbol } of state.watchlist) {
+    for (const { symbol } of allItems()) {
       if (state.history.has(symbol)) continue;
       state.history.set(symbol, null);
       api(`/api/history?symbol=${encodeURIComponent(symbol)}&days=30`)
         .then((rows) => {
           state.history.set(symbol, rows.map((r) => r.close));
-          const cell = els.tbody.querySelector(`tr[data-symbol="${CSS.escape(symbol)}"] .spark-cell`);
+          const cell = els.table.querySelector(`tr[data-symbol="${CSS.escape(symbol)}"] .spark-cell`);
           if (cell) cell.innerHTML = sparkline(state.history.get(symbol));
         })
         .catch(() => state.history.set(symbol, []));
@@ -183,7 +266,7 @@
     clearTimeout(state.timer);
     const chosen = Number(state.settings.interval);
     if (!chosen) return;
-    const seconds = isMarketOpen() ? chosen : Math.max(chosen, CLOSED_MARKET_INTERVAL_S);
+    const seconds = isMarketActive() ? chosen : Math.max(chosen, CLOSED_MARKET_INTERVAL_S);
     state.timer = setTimeout(async () => {
       if (!document.hidden) await refresh();
       schedule();
@@ -194,9 +277,10 @@
   // Rendering
   // ---------------------------------------------------------------------
 
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  }
+  const GRIP_ICON = '<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.5"/><circle cx="7.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/></g></svg>';
+  const PENCIL_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+  const TRASH_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+  const CARET_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function sparkline(values) {
     if (!values || values.length < 2) return '';
@@ -210,11 +294,12 @@
     return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="M${pts.join('L')}" stroke="${color}"/></svg>`;
   }
 
-  function sortedWatchlist() {
+  /** Applies the column sort, if any, within one section. */
+  function sortedItems(items) {
     const { sort, asc } = state.settings;
-    if (!sort) return state.watchlist;
+    if (!sort) return items;
     const dir = asc ? 1 : -1;
-    return [...state.watchlist].sort((a, b) => {
+    return [...items].sort((a, b) => {
       if (sort === 'symbol') return a.symbol.localeCompare(b.symbol) * dir;
       const av = state.quotes.get(a.symbol)?.[sort];
       const bv = state.quotes.get(b.symbol)?.[sort];
@@ -229,21 +314,24 @@
   }
 
   function rowHtml(item) {
+    const sym = escapeHtml(item.symbol);
     const q = state.quotes.get(item.symbol);
     const name = item.name || q?.name || '';
     const link = pseLink(q);
-    const symHtml = `<span class="sym">${escapeHtml(item.symbol)}</span><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
+    const symHtml = `<span class="sym">${sym}</span><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
+    const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
     const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
-    const remove = `<td><button class="remove" data-remove="${escapeHtml(item.symbol)}" title="Remove ${escapeHtml(item.symbol)}" aria-label="Remove ${escapeHtml(item.symbol)}">×</button></td>`;
+    const remove = `<td><button class="remove" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button></td>`;
 
     if (!q) {
-      return `<tr data-symbol="${escapeHtml(item.symbol)}">${symCell}<td class="num muted" colspan="9">Loading…</td>${remove}</tr>`;
+      return `<tr data-symbol="${sym}">${handle}${symCell}<td class="num muted" colspan="9">Loading…</td>${remove}</tr>`;
     }
     if (q.error) {
-      return `<tr class="row-error" data-symbol="${escapeHtml(item.symbol)}">${symCell}<td class="err" colspan="9">${escapeHtml(q.error)}</td>${remove}</tr>`;
+      return `<tr class="row-error" data-symbol="${sym}">${handle}${symCell}<td class="err" colspan="9">${escapeHtml(q.error)}</td>${remove}</tr>`;
     }
     const cls = dirClass(q.change);
-    return `<tr data-symbol="${escapeHtml(item.symbol)}">
+    return `<tr data-symbol="${sym}">
+      ${handle}
       ${symCell}
       <td class="num last ${q.flash || ''}" title="${q.asOf ? `As of ${escapeHtml(q.asOf)}` : ''}">${fmtPrice(q.last)}</td>
       <td class="num hide-sm ${cls}">${fmtSigned(q.change, '', (n) => fmtPrice(n, q.last ?? n))}</td>
@@ -258,46 +346,198 @@
     </tr>`;
   }
 
-  function render() {
-    els.empty.hidden = state.watchlist.length > 0;
-    els.table.querySelector('thead').hidden = state.watchlist.length === 0;
-    els.tbody.innerHTML = sortedWatchlist().map(rowHtml).join('');
+  function sectionHtml(section) {
+    const id = escapeHtml(section.id);
+    const name = escapeHtml(section.name);
+    const editing = state.editingSection === section.id;
+    const canDelete = state.sections.length > 1;
+    const title = editing
+      ? `<input class="section-input" data-section-input="${id}" value="${name}" maxlength="40" aria-label="Section name">`
+      : `<span class="section-name" data-rename="${id}" title="Double-click to rename">${name}</span>`;
+    const head = `<tr class="section-head">
+      <td class="handle-cell"><button class="drag-handle" type="button" data-drag="section" data-section-id="${id}" title="Drag to move this section" aria-label="Move section ${name}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>
+      <td colspan="${COLUMN_COUNT - 1}">
+        <div class="section-bar">
+          <button class="icon-btn collapse-btn" type="button" data-toggle="${id}" aria-expanded="${!section.collapsed}" title="${section.collapsed ? 'Expand' : 'Collapse'}">${CARET_ICON}</button>
+          ${title}
+          <span class="count">${section.items.length}</span>
+          <span class="spacer"></span>
+          <button class="icon-btn" type="button" data-rename="${id}" title="Rename section" aria-label="Rename section ${name}">${PENCIL_ICON}</button>
+          ${canDelete ? `<button class="icon-btn danger" type="button" data-delete-section="${id}" title="Delete section" aria-label="Delete section ${name}">${TRASH_ICON}</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+    let body = '';
+    if (!section.collapsed) {
+      body = section.items.length
+        ? sortedItems(section.items).map(rowHtml).join('')
+        : `<tr class="section-empty"><td></td><td colspan="${COLUMN_COUNT - 1}" class="muted">No stocks yet. Add one from the search box, or drag a stock here.</td></tr>`;
+    }
+    return `<tbody class="section${section.collapsed ? ' collapsed' : ''}" data-section-id="${id}">${head}${body}</tbody>`;
+  }
+
+  function renderSortHeaders() {
     for (const th of els.table.querySelectorAll('th[data-sort]')) {
       const active = th.dataset.sort === state.settings.sort;
       th.classList.toggle('sorted', active);
       th.classList.toggle('asc', active && state.settings.asc);
     }
+  }
+
+  function renderAddTarget() {
+    if (!findSection(state.settings.addTarget)) state.settings.addTarget = state.sections[0].id;
+    els.addTarget.innerHTML = state.sections
+      .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`)
+      .join('');
+    els.addTarget.value = state.settings.addTarget;
+    els.addTargetWrap.hidden = state.sections.length < 2;
+  }
+
+  function render() {
+    // Re-rendering mid-drag would detach the element holding the pointer.
+    if (state.drag) {
+      state.renderPending = true;
+      return;
+    }
+    const focused = document.activeElement?.closest?.('.drag-handle');
+    const focusKey = focused && (focused.dataset.symbol ? `[data-symbol="${CSS.escape(focused.dataset.symbol)}"]` : `[data-section-id="${CSS.escape(focused.dataset.sectionId)}"]`);
+    // Keep a half-typed section name when a price refresh re-renders.
+    const oldInput = els.table.querySelector('.section-input');
+    const typed = oldInput && { value: oldInput.value, start: oldInput.selectionStart, end: oldInput.selectionEnd, focused: document.activeElement === oldInput };
+    if (oldInput) state.renderingRename = true;
+
+    els.table.querySelectorAll('tbody').forEach((b) => b.remove());
+    state.renderingRename = false;
+    els.table.insertAdjacentHTML('beforeend', state.sections.map(sectionHtml).join(''));
+    renderSortHeaders();
+    renderAddTarget();
     for (const q of state.quotes.values()) q.flash = '';
+
+    if (focusKey) els.table.querySelector(`.drag-handle${focusKey}`)?.focus();
+    const input = els.table.querySelector('.section-input');
+    if (input && typed && input.dataset.sectionInput === oldInput.dataset.sectionInput) {
+      input.value = typed.value;
+      if (typed.focused) {
+        input.focus();
+        input.setSelectionRange(typed.start, typed.end);
+      }
+    } else if (input) {
+      input.focus();
+      input.select();
+    }
   }
 
   // ---------------------------------------------------------------------
-  // Watchlist editing
+  // Watchlist and section editing
   // ---------------------------------------------------------------------
 
   function addToWatchlist(company) {
-    if (state.watchlist.some((w) => w.symbol === company.symbol)) return;
-    state.watchlist.push({ symbol: company.symbol, name: company.name });
-    saveWatchlist();
+    if (sectionOf(company.symbol)) return;
+    const section = findSection(state.settings.addTarget) || state.sections[0];
+    section.items.push({ symbol: company.symbol, name: company.name });
+    section.collapsed = false;
+    saveSections();
     render();
     refresh();
   }
 
   function removeFromWatchlist(symbol) {
-    state.watchlist = state.watchlist.filter((w) => w.symbol !== symbol);
+    for (const s of state.sections) s.items = s.items.filter((w) => w.symbol !== symbol);
     state.quotes.delete(symbol);
-    saveWatchlist();
+    saveSections();
     render();
   }
 
-  els.tbody.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove]');
-    if (btn) removeFromWatchlist(btn.dataset.remove);
+  function addSection() {
+    const section = { id: newId(), name: 'New section', collapsed: false, items: [] };
+    state.sections.push(section);
+    state.settings.addTarget = section.id;
+    state.editingSection = section.id;
+    saveSections();
+    saveSettings();
+    render();
+  }
+
+  function finishRename(input, commit) {
+    const section = findSection(input.dataset.sectionInput);
+    if (!section || state.editingSection !== section.id) return;
+    const name = input.value.trim();
+    if (commit && name) section.name = name;
+    state.editingSection = null;
+    saveSections();
+    render();
+  }
+
+  function deleteSection(id) {
+    const section = findSection(id);
+    if (!section || state.sections.length < 2) return;
+    const n = section.items.length;
+    if (n && !confirm(`Delete "${section.name}" and remove its ${n} stock${n === 1 ? '' : 's'} from your watchlist?`)) return;
+    state.sections = state.sections.filter((s) => s !== section);
+    saveSections();
+    render();
+  }
+
+  /** Makes the on-screen (sorted) order the saved order, then turns sorting off. */
+  function commitSortOrder() {
+    if (!state.settings.sort) return;
+    for (const s of state.sections) s.items = sortedItems(s.items);
+    state.settings.sort = null;
+    saveSections();
+    saveSettings();
+    renderSortHeaders();
+  }
+
+  els.table.addEventListener('click', (e) => {
+    const t = e.target;
+    const remove = t.closest('[data-remove]');
+    if (remove) return removeFromWatchlist(remove.dataset.remove);
+    const toggle = t.closest('[data-toggle]');
+    if (toggle) {
+      const section = findSection(toggle.dataset.toggle);
+      section.collapsed = !section.collapsed;
+      saveSections();
+      return render();
+    }
+    const rename = t.closest('button[data-rename]');
+    if (rename) {
+      state.editingSection = rename.dataset.rename;
+      return render();
+    }
+    const del = t.closest('[data-delete-section]');
+    if (del) return deleteSection(del.dataset.deleteSection);
+    const th = t.closest('th[data-sort]');
+    if (th) return sortBy(th.dataset.sort);
   });
 
-  els.table.querySelector('thead').addEventListener('click', (e) => {
-    const th = e.target.closest('th[data-sort]');
-    if (!th) return;
-    const key = th.dataset.sort;
+  els.table.addEventListener('dblclick', (e) => {
+    const name = e.target.closest('.section-name[data-rename]');
+    if (name) {
+      state.editingSection = name.dataset.rename;
+      render();
+    }
+  });
+
+  els.table.addEventListener('keydown', (e) => {
+    const input = e.target.closest('.section-input');
+    if (input) {
+      if (e.key === 'Enter') finishRename(input, true);
+      if (e.key === 'Escape') finishRename(input, false);
+      return;
+    }
+    const handle = e.target.closest('.drag-handle');
+    if (handle && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      moveByKeyboard(handle, e.key === 'ArrowUp' ? -1 : 1);
+    }
+  });
+
+  els.table.addEventListener('focusout', (e) => {
+    const input = e.target.closest('.section-input');
+    if (input && !state.renderingRename) finishRename(input, true);
+  });
+
+  function sortBy(key) {
     if (state.settings.sort !== key) {
       state.settings.sort = key;
       state.settings.asc = key === 'symbol';
@@ -308,7 +548,158 @@
     }
     saveSettings();
     render();
+  }
+
+  els.addSection.addEventListener('click', addSection);
+  els.addTarget.addEventListener('change', () => {
+    state.settings.addTarget = els.addTarget.value;
+    saveSettings();
   });
+
+  // ---------------------------------------------------------------------
+  // Drag to reorder (pointer events, so it works with a mouse and on touch)
+  // ---------------------------------------------------------------------
+
+  function moveItem(symbol, toSectionId, index) {
+    const from = sectionOf(symbol);
+    const to = findSection(toSectionId);
+    if (!from || !to) return;
+    const item = from.items.find((i) => i.symbol === symbol);
+    from.items = from.items.filter((i) => i !== item);
+    to.items.splice(Math.min(index, to.items.length), 0, item);
+  }
+
+  function moveSection(id, index) {
+    const section = findSection(id);
+    const rest = state.sections.filter((s) => s !== section);
+    rest.splice(Math.min(index, rest.length), 0, section);
+    state.sections = rest;
+  }
+
+  function moveByKeyboard(handle, delta) {
+    commitSortOrder();
+    if (handle.dataset.drag === 'section') {
+      const i = state.sections.findIndex((s) => s.id === handle.dataset.sectionId);
+      if (i + delta < 0 || i + delta >= state.sections.length) return;
+      moveSection(handle.dataset.sectionId, i + delta);
+    } else {
+      const symbol = handle.dataset.symbol;
+      const section = sectionOf(symbol);
+      const si = state.sections.indexOf(section);
+      const i = section.items.findIndex((it) => it.symbol === symbol);
+      if (i + delta >= 0 && i + delta < section.items.length) {
+        moveItem(symbol, section.id, i + delta);
+      } else {
+        // At the edge of a section: hop into the neighbouring one.
+        const neighbour = state.sections[si + delta];
+        if (!neighbour) return;
+        neighbour.collapsed = false;
+        moveItem(symbol, neighbour.id, delta < 0 ? neighbour.items.length : 0);
+      }
+    }
+    saveSections();
+    render();
+  }
+
+  const rectOf = (el) => el.getBoundingClientRect();
+
+  /** Works out where a dragged stock would land for pointer position y. */
+  function itemDropTarget(y) {
+    const bodies = [...els.table.querySelectorAll('tbody.section')];
+    const body = bodies.find((b) => y < rectOf(b).bottom) || bodies[bodies.length - 1];
+    const section = findSection(body.dataset.sectionId);
+    if (section.collapsed) {
+      return { sectionId: section.id, index: Infinity, lineY: rectOf(body).bottom };
+    }
+    const rows = [...body.querySelectorAll('tr[data-symbol]')].filter((r) => r.dataset.symbol !== state.drag.symbol);
+    let index = rows.findIndex((r) => y < rectOf(r).top + rectOf(r).height / 2);
+    if (index === -1) index = rows.length;
+    let lineY;
+    if (!rows.length) lineY = rectOf(body.querySelector('.section-head')).bottom;
+    else if (index < rows.length) lineY = rectOf(rows[index]).top;
+    else lineY = rectOf(rows[rows.length - 1]).bottom;
+    return { sectionId: section.id, index, lineY };
+  }
+
+  /** Works out where a dragged section would land for pointer position y. */
+  function sectionDropTarget(y) {
+    const bodies = [...els.table.querySelectorAll('tbody.section')].filter((b) => b.dataset.sectionId !== state.drag.sectionId);
+    if (!bodies.length) return null;
+    let index = bodies.findIndex((b) => y < rectOf(b).top + rectOf(b).height / 2);
+    if (index === -1) index = bodies.length;
+    const lineY = index < bodies.length ? rectOf(bodies[index]).top : rectOf(bodies[bodies.length - 1]).bottom;
+    return { index, lineY };
+  }
+
+  function updateDrag() {
+    const drag = state.drag;
+    if (!drag) return;
+    drag.target = drag.type === 'item' ? itemDropTarget(drag.y) : sectionDropTarget(drag.y);
+    if (!drag.target) {
+      els.dropIndicator.hidden = true;
+      return;
+    }
+    const wrap = rectOf(els.tableWrap);
+    els.dropIndicator.style.top = `${drag.target.lineY - wrap.top + els.tableWrap.scrollTop - 1}px`;
+    els.dropIndicator.hidden = false;
+  }
+
+  // Scrolls the page while a drag is held near the top or bottom edge.
+  function autoScroll() {
+    const drag = state.drag;
+    if (!drag) return;
+    const edge = 70;
+    const speed = drag.y < edge ? -(edge - drag.y) / 4 : drag.y > innerHeight - edge ? (drag.y - (innerHeight - edge)) / 4 : 0;
+    if (speed) {
+      scrollBy(0, speed);
+      updateDrag();
+    }
+    drag.frame = requestAnimationFrame(autoScroll);
+  }
+
+  els.table.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle || e.button !== 0) return;
+    e.preventDefault();
+    handle.focus();
+    commitSortOrder();
+    handle.setPointerCapture(e.pointerId);
+    const type = handle.dataset.drag;
+    const source = type === 'item' ? handle.closest('tr') : handle.closest('tbody');
+    source.classList.add('is-dragging');
+    document.body.classList.add('dragging');
+    state.drag = { type, handle, source, symbol: handle.dataset.symbol, sectionId: handle.dataset.sectionId, y: e.clientY, pointerId: e.pointerId, target: null };
+    updateDrag();
+    state.drag.frame = requestAnimationFrame(autoScroll);
+  });
+
+  els.table.addEventListener('pointermove', (e) => {
+    if (!state.drag || e.pointerId !== state.drag.pointerId) return;
+    state.drag.y = e.clientY;
+    updateDrag();
+  });
+
+  function endDrag(e, apply) {
+    const drag = state.drag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    cancelAnimationFrame(drag.frame);
+    drag.source.classList.remove('is-dragging');
+    document.body.classList.remove('dragging');
+    els.dropIndicator.hidden = true;
+    state.drag = null;
+    if (apply && drag.target) {
+      if (drag.type === 'item') moveItem(drag.symbol, drag.target.sectionId, drag.target.index);
+      else moveSection(drag.sectionId, drag.target.index);
+      saveSections();
+    }
+    if (apply || state.renderPending) {
+      state.renderPending = false;
+      render();
+    }
+  }
+
+  els.table.addEventListener('pointerup', (e) => endDrag(e, true));
+  els.table.addEventListener('pointercancel', (e) => endDrag(e, false));
 
   // ---------------------------------------------------------------------
   // Search with autocomplete
@@ -330,9 +721,10 @@
       return;
     }
     els.results.innerHTML = results.map((r, i) => {
-      const added = state.watchlist.some((w) => w.symbol === r.symbol);
-      return `<li role="option" data-index="${i}" aria-selected="${i === active}" class="${added ? 'disabled' : ''}">
-        <span class="sym">${escapeHtml(r.symbol)}</span><span class="name">${escapeHtml(r.name)}</span>${added ? '<span class="tag">Added</span>' : ''}
+      const inSection = sectionOf(r.symbol);
+      const tag = inSection ? `<span class="tag">In ${escapeHtml(inSection.name)}</span>` : '';
+      return `<li role="option" data-index="${i}" aria-selected="${i === active}" class="${inSection ? 'disabled' : ''}">
+        <span class="sym">${escapeHtml(r.symbol)}</span><span class="name">${escapeHtml(r.name)}</span>${tag}
       </li>`;
     }).join('');
     els.results.hidden = false;
@@ -346,7 +738,7 @@
 
   function choose(index) {
     const r = results[index];
-    if (!r || state.watchlist.some((w) => w.symbol === r.symbol)) return;
+    if (!r || sectionOf(r.symbol)) return;
     addToWatchlist(r);
     els.search.value = '';
     closeResults();
@@ -452,8 +844,10 @@
 
   api('/api/config').then((cfg) => { els.demo.hidden = !cfg.demo; }).catch(() => {});
 
+  saveSections();
+  renderSchedule();
   renderClock();
-  setInterval(renderClock, 30000);
+  setInterval(renderClock, 15000);
   render();
   refresh();
   schedule();

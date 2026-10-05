@@ -22,11 +22,16 @@
     </div>
     <div class="status">
       <span id="market-status" class="pill"></span>
+      <span id="next-event" class="muted next-event"></span>
       <span id="clock" class="muted"></span>
       <button id="theme-toggle" class="theme-toggle" type="button">
         <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g></svg>
       </button>
+    </div>
+    <div class="schedule" aria-label="PSE market schedule">
+      <span class="schedule-title">Market schedule <span class="muted">(Mon–Fri, Manila time)</span></span>
+      <ol id="schedule-phases" class="phases"></ol>
     </div>
   </header>
 
@@ -40,6 +45,13 @@
         <label for="search-input" class="visually-hidden">Add a stock to your watchlist</label>
         <input id="search-input" type="search" placeholder="Add a stock (e.g. JFC, Ayala)" autocomplete="off" spellcheck="false">
         <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+      </div>
+      <div class="section-controls">
+        <span id="add-target-wrap" hidden>
+          <label class="muted" for="add-target">Add to</label>
+          <select id="add-target"></select>
+        </span>
+        <button id="add-section" type="button" class="btn">+ New section</button>
       </div>
       <div class="controls">
         <label class="muted" for="interval">Refresh</label>
@@ -63,6 +75,7 @@
       <table id="watchlist">
         <thead>
           <tr>
+            <th class="handle-cell" aria-label="Reorder"></th>
             <th data-sort="symbol">Symbol</th>
             <th data-sort="last" class="num">Last</th>
             <th data-sort="change" class="num hide-sm">Change</th>
@@ -78,10 +91,7 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="empty" class="empty" hidden>
-        <p>Your watchlist is empty.</p>
-        <p class="muted">Search for a stock above to start tracking it.</p>
-      </div>
+      <div id="drop-indicator" class="drop-indicator" hidden></div>
     </section>
   </main>
 

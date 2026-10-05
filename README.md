@@ -7,11 +7,21 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 - **Watchlist**: search by symbol or company name, add with a click or Enter, and remove with ×.
   The list is saved in your browser, so it's still there next time you open the app.
+- **Sections**: group stocks into your own sections (for example "Banks" or "Long-term").
+  Use **+ New section** to create one and **Add to** to pick where new stocks go. Rename a
+  section with the pencil button or by double-clicking its name, collapse it with the arrow,
+  or delete it with the bin.
+- **Drag to reorder**: drag the dotted handle on the left of a stock to move it, including
+  into another section. Section headers have a handle too. With a mouse, touch or keyboard
+  (focus a handle and press the up and down arrow keys).
+- **Market schedule** in the header: shows each PSE trading phase, highlights the current one,
+  and counts down to the next (for example "Lunch recess in 1h 45m").
 - **Auto-refresh** every 15s, 30s, 1m or 5m, or paused. Refreshing slows to every 5 minutes
   outside PSE trading hours and stops while the tab is hidden.
 - For each stock: last traded price, change, % change, open, high, low, previous close,
   volume and a 30-day sparkline. Prices flash green or red when they move.
-- Click any column header to sort. A third click returns to your own order.
+- Click any column header to sort within each section. A third click returns to your own
+  order. Dragging a stock while sorted keeps the sorted order as your new order.
 - Click a symbol to open its page on PSE Edge.
 - Light and dark mode: follows your device setting until you pick one with the sun/moon
   button in the header, then remembers your choice.
@@ -76,7 +86,8 @@ npm test
 ## Notes
 
 - "Real time" here means as fresh as PSE Edge publishes. PSE Edge may lag the trading floor.
-- The market open/closed badge is approximate: weekdays, about 9:30 AM to 3:00 PM Manila
-  time. It doesn't know about exchange holidays.
+- The market schedule follows PSE's regular weekday sessions (pre-open 9:00, trading
+  9:30–12:00 and 1:00–2:45, pre-close 2:45, run-off 2:50, close 3:00 PM Manila time).
+  It doesn't know about exchange holidays or special trading days.
 - Please keep the refresh interval reasonable. PSE Edge is a public service.
 - This app is for information only and is not investment advice.

@@ -72,9 +72,10 @@ code { font-size: 0.95em; }
 .topbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 10px 12px;
+  padding: 14px 24px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -114,8 +115,41 @@ code { font-size: 0.95em; }
   background: var(--hover);
 }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-.pill.open { color: var(--up); background: var(--up-bg); }
-.pill.open::before { background: var(--up); }
+.pill.phase-trading { color: var(--up); background: var(--up-bg); }
+.pill.phase-trading::before { background: var(--up); }
+.pill.phase-preopen, .pill.phase-preclose, .pill.phase-runoff, .pill.phase-recess {
+  color: var(--banner-text);
+  background: var(--banner-bg);
+}
+.pill.phase-preopen::before, .pill.phase-preclose::before, .pill.phase-runoff::before, .pill.phase-recess::before {
+  background: currentColor;
+}
+.next-event { white-space: nowrap; }
+
+/* Market schedule strip under the title */
+.schedule {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.schedule-title { font-weight: 600; }
+.phases { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.phase {
+  display: inline-flex;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.phase-label { color: var(--text); font-weight: 500; }
+.phase.current { border-color: transparent; color: var(--banner-text); background: var(--banner-bg); }
+.phase.current .phase-label { color: inherit; font-weight: 700; }
+.phase-trading.current { color: var(--up); background: var(--up-bg); }
 
 .banner {
   padding: 10px 24px;
@@ -140,7 +174,9 @@ input[type="search"]:focus, select:focus, .btn:focus-visible { outline: 2px soli
 select { padding: 7px 8px; }
 .btn { padding: 7px 12px; cursor: pointer; }
 .btn:hover { background: var(--hover); }
-.controls { display: flex; align-items: center; gap: 8px; }
+.controls, .section-controls { display: flex; align-items: center; gap: 8px; }
+#add-target-wrap:not([hidden]) { display: inline-flex; align-items: center; gap: 8px; }
+#add-target { max-width: 160px; }
 
 .search-results {
   position: absolute;
@@ -180,6 +216,7 @@ select { padding: 7px 8px; }
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow-x: auto;
+  position: relative;
 }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 10px 12px; text-align: left; white-space: nowrap; }
@@ -231,8 +268,86 @@ tbody tr:hover { background: var(--hover); }
 }
 .remove:hover { color: var(--down); background: var(--down-bg); }
 
-.empty { padding: 40px 16px; text-align: center; }
-.empty p { margin: 4px 0; }
+/* Sections */
+tbody.section .section-head td { padding-top: 8px; padding-bottom: 8px; background: var(--hover); }
+tbody.section + tbody.section .section-head td { border-top: 1px solid var(--border); }
+tbody.section .section-head:hover { background: none; }
+.section-bar { display: flex; align-items: center; gap: 6px; }
+.section-name { font-weight: 700; font-size: 13px; cursor: text; }
+.section-input {
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 3px 6px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  width: 200px;
+}
+.count {
+  min-width: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.spacer { flex: 1; }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: none;
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); background: var(--border); }
+.icon-btn.danger:hover { color: var(--down); background: var(--down-bg); }
+.collapse-btn svg { transition: transform 0.15s; }
+.collapsed .collapse-btn svg { transform: rotate(-90deg); }
+.section-empty td { padding: 14px 12px; font-size: 13px; white-space: normal; }
+
+/* Drag to reorder */
+th.handle-cell, td.handle-cell { width: 28px; padding-left: 8px; padding-right: 0; }
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  opacity: 0.55;
+}
+tr:hover .drag-handle, .drag-handle:focus-visible { opacity: 1; }
+.drag-handle:hover { background: var(--border); color: var(--text); }
+.drag-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
+.is-dragging, tbody.is-dragging td { opacity: 0.4; }
+.drop-indicator {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
 
 footer { max-width: 1200px; margin: 0 auto; padding: 8px 24px 32px; font-size: 12px; }
 
@@ -242,7 +357,18 @@ footer { max-width: 1200px; margin: 0 auto; padding: 8px 24px 32px; font-size: 1
   .banner { padding: 10px 16px; }
   .hide-sm { display: none; }
   #clock { display: none; }
+  .schedule-title .muted { display: none; }
+  .phase { padding: 2px 7px; }
+  th.handle-cell, td.handle-cell { width: 24px; padding-left: 2px; }
+  .section-input { width: 140px; }
   .brand h1 { font-size: 15px; line-height: 1.25; }
-  th, td { padding: 9px 8px; }
-  .sym-cell .name { max-width: 120px; }
+  th, td { padding: 9px 6px; }
+  .sym-cell .name { max-width: 104px; }
+  .chg-badge { min-width: 0; }
+  .remove { padding: 2px 4px; }
+}
+@media (max-width: 360px) {
+  .sym-cell .name { max-width: 72px; }
+  table { font-size: 13px; }
+  th, td { padding: 8px 4px; }
 }
