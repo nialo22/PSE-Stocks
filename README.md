@@ -1,4 +1,4 @@
-# PSE Stocks
+# PSE Stocks Watchlist by Nialo
 
 A small web app that shows near real-time Philippine Stock Exchange prices, pulled from
 [PSE Edge](https://edge.pse.com.ph/), for the stocks on your own watchlist.
@@ -13,6 +13,8 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
   volume and a 30-day sparkline. Prices flash green or red when they move.
 - Click any column header to sort. A third click returns to your own order.
 - Click a symbol to open its page on PSE Edge.
+- Light and dark mode: follows your device setting until you pick one with the sun/moon
+  button in the header, then remembers your choice.
 - Works on phones; less important columns are hidden on narrow screens.
 
 ## Running it

@@ -411,6 +411,38 @@
 
   els.refresh.addEventListener('click', refresh);
 
+  // Light/dark theme. With no saved choice the page follows the system
+  // setting; the inline script in index.html applies a saved choice early.
+  const THEME_KEY = 'pse-stocks:theme';
+  const themeToggle = $('#theme-toggle');
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme || (systemDark.matches ? 'dark' : 'light');
+  }
+
+  function renderThemeToggle() {
+    const dark = currentTheme() === 'dark';
+    themeToggle.classList.toggle('is-dark', dark);
+    const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    themeToggle.title = label;
+    themeToggle.setAttribute('aria-label', label);
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* storage unavailable: the choice lasts for this visit only */
+    }
+    renderThemeToggle();
+  });
+
+  systemDark.addEventListener('change', renderThemeToggle);
+  renderThemeToggle();
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       refresh();
