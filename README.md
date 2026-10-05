@@ -19,20 +19,32 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 You need [Node.js](https://nodejs.org/) 18 or newer. There are no dependencies to install.
 
+Get the code and run it from inside its folder (the same commands work in PowerShell
+on Windows and in a macOS or Linux terminal):
+
 ```sh
+cd ~
+git clone https://github.com/nialo22/PSE-Stocks.git
+cd PSE-Stocks
 npm start
 ```
 
-Then open <http://127.0.0.1:3000>.
+Then open <http://127.0.0.1:3000>. Press Ctrl+C in the terminal to stop the app.
+
+`npm` commands must be run from the `PSE-Stocks` folder. Running them anywhere else
+(such as `C:\Windows\system32`) fails with `ENOENT: no such file or directory, open ...package.json`.
+
+To set an option below, put it in front of the command on macOS or Linux
+(`PORT=4000 npm start`); in PowerShell, set it first (`$env:PORT=4000; npm start`).
 
 | Variable       | Default     | Purpose                                              |
 | -------------- | ----------- | ---------------------------------------------------- |
 | `PORT`         | `3000`      | Port to listen on                                    |
 | `HOST`         | `127.0.0.1` | Interface to bind (`0.0.0.0` to reach it from your phone on the same network) |
 | `QUOTE_TTL_MS` | `15000`     | How long a fetched quote is reused before PSE Edge is asked again |
-| `DEMO`         | unset       | `DEMO=1` serves simulated prices, for trying the app without internet access |
+| `DEMO`         | unset       | `1` serves simulated prices, for trying the app without internet access |
 
-`npm run demo` starts the app with simulated prices. A banner makes it clear the data is not real.
+`npm run demo` starts the app with simulated prices on any platform. A banner makes it clear the data is not real.
 
 ## How it works
 

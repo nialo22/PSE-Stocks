@@ -15,7 +15,7 @@ const { createService } = require('./lib/service');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
-const DEMO = process.env.DEMO === '1';
+const DEMO = process.env.DEMO === '1' || process.argv.includes('--demo');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_SYMBOLS = 60;
 
