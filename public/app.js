@@ -136,10 +136,20 @@
   ];
   const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  function fmtClock(minutes) {
+  const meridiem = (minutes) => (minutes < 12 * 60 ? 'AM' : 'PM');
+
+  /** 570 -> "9:30 AM"; pass false to leave off the AM/PM. */
+  function fmtClock(minutes, withMeridiem = true) {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')}`;
+    const time = `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')}`;
+    return withMeridiem ? `${time} ${meridiem(minutes)}` : time;
+  }
+
+  /** "1:00–2:45 PM", or "9:30 AM–12:00 PM" when the range crosses noon. */
+  function fmtRange(start, end) {
+    const same = meridiem(start) === meridiem(end);
+    return `${fmtClock(start, !same)}–${fmtClock(end)}`;
   }
 
   function fmtDuration(minutes) {
@@ -173,7 +183,7 @@
     // After the close or on a weekend: the next session is the next weekday.
     const nextDay = day === 5 || day === 6 ? 1 : (day + 1) % 7;
     const when = nextDay === (day + 1) % 7 ? 'tomorrow' : WEEKDAYS[nextDay];
-    return { phase: null, index: -1, next: `Opens ${when} ${fmtClock(PHASES[0].start)} AM` };
+    return { phase: null, index: -1, next: `Opens ${when} ${fmtClock(PHASES[0].start)}` };
   }
 
   /** Prices move from pre-open through run-off, except over the lunch recess. */
@@ -186,7 +196,7 @@
     els.schedule.innerHTML = PHASES.map((p, i) => `
       <li class="phase phase-${p.key}" data-index="${i}">
         <span class="phase-label">${p.label}</span>
-        <span class="phase-time">${fmtClock(p.start)}–${fmtClock(p.end)}</span>
+        <span class="phase-time">${fmtRange(p.start, p.end)}</span>
       </li>`).join('');
   }
 
