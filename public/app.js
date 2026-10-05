@@ -236,7 +236,10 @@
         }
       }
       els.error.hidden = true;
-      els.updated.textContent = `Updated ${new Date(data.fetchedAt).toLocaleTimeString()}`;
+      const fetched = new Date(data.fetchedAt);
+      const date = fetched.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      const time = fetched.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+      els.updated.textContent = `Updated ${date} · ${time}`;
     } catch (err) {
       els.error.textContent = `Could not reach PSE Edge: ${err.message}`;
       els.error.hidden = false;
