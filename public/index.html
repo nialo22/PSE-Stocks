@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PSE Stocks</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 17l5-5 4 4 8-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h1>PSE Stocks</h1>
+    </div>
+    <div class="status">
+      <span id="market-status" class="pill"></span>
+      <span id="clock" class="muted"></span>
+    </div>
+  </header>
+
+  <div id="demo-banner" class="banner" hidden>
+    Demo mode: prices are simulated, not from PSE Edge. Restart without <code>DEMO=1</code> for live data.
+  </div>
+
+  <main>
+    <section class="toolbar">
+      <div class="search">
+        <label for="search-input" class="visually-hidden">Add a stock to your watchlist</label>
+        <input id="search-input" type="search" placeholder="Add a stock (e.g. JFC, Ayala)" autocomplete="off" spellcheck="false">
+        <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+      </div>
+      <div class="controls">
+        <label class="muted" for="interval">Refresh</label>
+        <select id="interval">
+          <option value="15">15s</option>
+          <option value="30">30s</option>
+          <option value="60">1m</option>
+          <option value="300">5m</option>
+          <option value="0">Paused</option>
+        </select>
+        <button id="refresh" type="button" class="btn">Refresh now</button>
+      </div>
+    </section>
+
+    <div class="meta muted">
+      <span id="updated">Not updated yet</span>
+      <span id="error" class="error" hidden></span>
+    </div>
+
+    <section class="table-wrap">
+      <table id="watchlist">
+        <thead>
+          <tr>
+            <th data-sort="symbol">Symbol</th>
+            <th data-sort="last" class="num">Last</th>
+            <th data-sort="change" class="num hide-sm">Change</th>
+            <th data-sort="changePercent" class="num">% Chg</th>
+            <th data-sort="open" class="num hide-sm">Open</th>
+            <th data-sort="high" class="num hide-sm">High</th>
+            <th data-sort="low" class="num hide-sm">Low</th>
+            <th data-sort="prevClose" class="num hide-md">Prev close</th>
+            <th data-sort="volume" class="num hide-sm">Volume</th>
+            <th class="hide-md">30 days</th>
+            <th aria-label="Actions"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty" class="empty" hidden>
+        <p>Your watchlist is empty.</p>
+        <p class="muted">Search for a stock above to start tracking it.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="muted">
+    Data source: <a href="https://edge.pse.com.ph/" target="_blank" rel="noopener">PSE Edge</a>.
+    Prices are as published by PSE Edge and may be delayed. Not investment advice.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

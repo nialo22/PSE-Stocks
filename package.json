@@ -1,0 +1,16 @@
+{
+  "name": "pse-stocks",
+  "version": "1.0.0",
+  "description": "Near real-time Philippine Stock Exchange prices from PSE Edge with a customizable watchlist",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "demo": "DEMO=1 node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,30 @@
+<html>
+<head><title>PSE Edge - Stock Data</title></head>
+<body>
+<div id="contents">
+  <h2>Jollibee Foods Corporation</h2>
+  <form name="stockForm" method="post" action="/companyPage/stockData.do">
+    <input type="hidden" name="cmpy_id" value="86">
+    <select name="security_id" id="security_id" onchange="changeSecurity();">
+      <option value="158" selected="selected">JFC</option>
+      <option value="602">JFCPB</option>
+    </select>
+  </form>
+  <p class="date">As of Oct 03, 2026 03:00 PM</p>
+  <table class="view">
+    <tr><th>Status</th><td>OPEN</td><th>Issue Type</th><td>Common</td></tr>
+    <tr><th>ISIN</th><td>PHY4466S1007</td><th>Listing Date</th><td>Jul 14, 1993</td></tr>
+    <tr><th>Board Lot</th><td>10</td><th>Par Value</th><td>1.00</td></tr>
+    <tr><th>Market Capitalization</th><td>259,330,416,946.40</td><th>Outstanding Shares</th><td>1,122,642,497</td></tr>
+  </table>
+  <table class="view">
+    <tr><th>Last Traded Price</th><td>230.00</td><th>Open</th><td>228.00</td></tr>
+    <tr><th>Previous Close and Date</th><td>231.20&nbsp;(Oct 02, 2026)</td><th>High</th><td>232.40</td></tr>
+    <tr><th>Change(% Change)</th><td class="down"><img src="/images/ico_down.gif" alt=""> 1.20&nbsp;( 0.52%)</td><th>Low</th><td>227.60</td></tr>
+    <tr><th>Volume</th><td>1,234,560</td><th>Value</th><td>283,948,800.00</td></tr>
+    <tr><th>52-Week High</th><td>290.00</td><th>52-Week Low</th><td>205.00</td></tr>
+    <tr><th>P/E Ratio</th><td>24.31</td><th>Sector P/E Ratio</th><td>18.20</td></tr>
+  </table>
+</div>
+</body>
+</html>
