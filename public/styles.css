@@ -353,8 +353,24 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 }
 
 footer { max-width: 1200px; margin: 0 auto; padding: 8px 24px 32px; font-size: 12px; }
+.tip { margin: 8px 0 0; }
 
-@media (max-width: 900px) { .hide-md { display: none; } }
+@media (max-width: 1200px) {
+  th, td { padding: 9px 7px; }
+  .sym-cell .name { max-width: 150px; }
+}
+@media (max-width: 1000px) {
+  .hide-md { display: none; }
+  main, footer { padding-left: 16px; padding-right: 16px; }
+  table { font-size: 13px; }
+  th, td { padding: 8px 6px; }
+  .sym-cell .name { max-width: 110px; }
+  .chg-badge { min-width: 0; }
+}
+@media (max-width: 760px) {
+  th, td { padding: 8px 4px; }
+  .sym-cell .name { max-width: 74px; }
+}
 @media (max-width: 640px) {
   .topbar, main, footer { padding-left: 16px; padding-right: 16px; }
   .banner { padding: 10px 16px; }
