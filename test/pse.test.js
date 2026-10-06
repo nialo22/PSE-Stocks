@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, createClient } = require('../lib/pse');
+const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, createClient, PSE_EDGE_DOWN_MESSAGE } = require('../lib/pse');
 const { createService, TtlCache } = require('../lib/service');
 
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'stockData.html'), 'utf8');
@@ -61,7 +61,7 @@ test('parseSearchResults normalizes autocomplete rows', () => {
     { cmpyId: '86', symbol: 'JFC', name: 'Jollibee Foods Corporation' },
     { cmpyId: '86', symbol: 'JFCPB', name: 'Jollibee Foods Corporation' },
   ]);
-  assert.throws(() => parseSearchResults('<html>'), /unexpected response/);
+  assert.throws(() => parseSearchResults('<html>'), (err) => err.code === 'PSE_EDGE_DOWN' && /unexpected response/.test(err.detail));
 });
 
 test('parseHistory reads chart rows', () => {
@@ -194,4 +194,36 @@ test('service.companies caches the directory and resolves symbols from it', asyn
   const [q] = await service.quotes(['JFC']);
   assert.equal(q.cmpyId, '86');
   assert.equal(searchCalls, 0);
+});
+
+test('PSE Edge failures become a friendly "currently down" error', async () => {
+  const isDown = (detail) => (err) => {
+    assert.equal(err.message, 'PSE Edge Website is currently down. Please try again later.');
+    assert.equal(err.message, PSE_EDGE_DOWN_MESSAGE);
+    assert.equal(err.code, 'PSE_EDGE_DOWN');
+    assert.match(err.detail, detail);
+    return true;
+  };
+  const status520 = createClient({ fetchImpl: async () => ({ ok: false, status: 520, text: async () => '' }) });
+  await assert.rejects(status520.searchCompanies('AT'), isDown(/responded 520 for \/autoComplete/));
+
+  const offline = createClient({ fetchImpl: async () => { throw new TypeError('fetch failed'); } });
+  await assert.rejects(offline.fetchQuote('86', 'JFC'), isDown(/failed: fetch failed/));
+
+  const challengePage = createClient({ fetchImpl: async () => ({ ok: true, status: 200, text: async () => '<html>Just a moment...</html>' }) });
+  await assert.rejects(challengePage.searchCompanies('AT'), isDown(/unexpected response/));
+  await assert.rejects(challengePage.listCompanies(), isDown(/no companies/));
+});
+
+test('service.quotes reports PSE Edge being down per stock', async () => {
+  const client = createClient({ fetchImpl: async () => ({ ok: false, status: 520, text: async () => '' }) });
+  const service = createService(client);
+  const errors = console.error;
+  console.error = () => {};
+  try {
+    const [q] = await service.quotes(['AT']);
+    assert.deepEqual(q, { symbol: 'AT', error: PSE_EDGE_DOWN_MESSAGE, code: 'PSE_EDGE_DOWN' });
+  } finally {
+    console.error = errors;
+  }
 });

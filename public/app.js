@@ -11,6 +11,9 @@
     { symbol: 'BDO', name: 'BDO Unibank, Inc.' },
     { symbol: 'TEL', name: 'PLDT Inc.' },
   ];
+  // Must match lib/pse.js: the server flags PSE Edge outages with this code.
+  const PSE_EDGE_DOWN = 'PSE_EDGE_DOWN';
+  const PSE_EDGE_DOWN_MESSAGE = 'PSE Edge Website is currently down. Please try again later.';
   // Polling slows down outside trading hours, when PSE Edge prices don't move.
   const CLOSED_MARKET_INTERVAL_S = 300;
   // Columns in a stock row: drag handle, symbol, 9 data columns, remove.
@@ -220,8 +223,20 @@
   async function api(path) {
     const res = await fetch(path);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) {
+      // A gateway error with no JSON (e.g. a hosting timeout while waiting on
+      // PSE Edge) also means PSE Edge didn't answer in time.
+      const down = data.code === PSE_EDGE_DOWN || (!data.error && [502, 503, 504].includes(res.status));
+      const err = new Error(down ? PSE_EDGE_DOWN_MESSAGE : data.error || `Request failed (${res.status})`);
+      err.code = down ? PSE_EDGE_DOWN : data.code;
+      throw err;
+    }
     return data;
+  }
+
+  function showError(message) {
+    els.error.textContent = message || '';
+    els.error.hidden = !message;
   }
 
   async function refresh() {
@@ -236,8 +251,14 @@
     try {
       const symbols = items.map((w) => w.symbol).join(',');
       const data = await api(`/api/quotes?symbols=${encodeURIComponent(symbols)}`);
-      for (const q of data.quotes) {
+      let edgeDown = false;
+      for (let q of data.quotes) {
         const prev = state.quotes.get(q.symbol);
+        if (q.code === PSE_EDGE_DOWN) {
+          edgeDown = true;
+          // Keep showing the last good price rather than blanking the row.
+          if (prev && !prev.error) q = { ...prev, stale: true };
+        }
         q.flash = prev && prev.last != null && q.last != null && q.last !== prev.last
           ? (q.last > prev.last ? 'flash-up' : 'flash-down')
           : '';
@@ -249,14 +270,21 @@
           saveSections();
         }
       }
-      els.error.hidden = true;
-      const fetched = new Date(data.fetchedAt);
-      const date = fetched.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-      const time = fetched.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', second: '2-digit' });
-      els.updated.textContent = `Updated ${date} · ${time}`;
+      showError(edgeDown ? PSE_EDGE_DOWN_MESSAGE : '');
+      // Only move the "Updated" time when at least one price really came in.
+      if (data.quotes.some((q) => !q.error)) {
+        const fetched = new Date(data.fetchedAt);
+        const date = fetched.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        const time = fetched.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        els.updated.textContent = `Updated ${date} · ${time}`;
+      }
     } catch (err) {
-      els.error.textContent = `Could not reach PSE Edge: ${err.message}`;
-      els.error.hidden = false;
+      if (err.code === PSE_EDGE_DOWN) {
+        showError(PSE_EDGE_DOWN_MESSAGE);
+        for (const [symbol, q] of state.quotes) if (!q.error) state.quotes.set(symbol, { ...q, stale: true });
+      } else {
+        showError(`Couldn't update prices: ${err.message}`);
+      }
     } finally {
       state.loading = false;
       els.refresh.disabled = false;
@@ -344,10 +372,12 @@
       return `<tr data-symbol="${sym}">${handle}${symCell}<td class="num muted" colspan="9">Loading…</td>${remove}</tr>`;
     }
     if (q.error) {
-      return `<tr class="row-error" data-symbol="${sym}">${handle}${symCell}<td class="err" colspan="9">${escapeHtml(q.error)}</td>${remove}</tr>`;
+      const text = q.code === PSE_EDGE_DOWN ? 'Price unavailable' : q.error;
+      return `<tr class="row-error" data-symbol="${sym}">${handle}${symCell}<td class="err" colspan="9">${escapeHtml(text)}</td>${remove}</tr>`;
     }
     const cls = dirClass(q.change);
-    return `<tr data-symbol="${sym}">
+    const stale = q.stale ? ' class="stale" title="Last known price. PSE Edge is not responding right now."' : '';
+    return `<tr data-symbol="${sym}"${stale}>
       ${handle}
       ${symCell}
       <td class="num last ${q.flash || ''}" title="${q.asOf ? `As of ${escapeHtml(q.asOf)}` : ''}">${fmtPrice(q.last)}</td>
@@ -730,8 +760,10 @@
     try {
       state.companies = await api('/api/companies');
       state.companiesState = 'ready';
-    } catch {
+    } catch (err) {
       state.companiesState = 'error';
+      // Short, since the dropdown is narrow; the full outage message shows above the table.
+      state.companiesError = err.code === PSE_EDGE_DOWN ? 'Stock list unavailable.' : "Couldn't load the stock list.";
     }
     state.browseKey = null;
     renderBrowse();
@@ -741,11 +773,13 @@
     if (state.companiesState !== 'ready') {
       const message = state.companiesState === 'loading'
         ? 'Loading all PSE stocks…'
-        : "Couldn't load the stock list. Click to retry.";
-      els.browse.innerHTML = `<option value="">${message}</option>`;
+        : `${state.companiesError} Click to retry.`;
+      els.browse.innerHTML = `<option value="">${escapeHtml(message)}</option>`;
       els.browse.disabled = state.companiesState === 'loading';
+      els.browse.classList.toggle('is-error', state.companiesState === 'error');
       return;
     }
+    els.browse.classList.remove('is-error');
     // Rebuild only when the watchlist's stocks change, so a price refresh
     // never closes the dropdown while someone is scrolling it.
     const added = new Set(allItems().map((i) => i.symbol));
@@ -787,9 +821,9 @@
   let results = [];
   let active = -1;
 
-  function renderResults(message) {
+  function renderResults(message, isError = false) {
     if (message) {
-      els.results.innerHTML = `<li class="disabled">${escapeHtml(message)}</li>`;
+      els.results.innerHTML = `<li class="disabled${isError ? ' error-item' : ''}">${escapeHtml(message)}</li>`;
       els.results.hidden = false;
       return;
     }
@@ -838,7 +872,8 @@
         active = results.length ? 0 : -1;
         renderResults(results.length ? null : 'No matching stocks');
       } catch (err) {
-        if (seq === searchSeq) renderResults(`Search failed: ${err.message}`);
+        if (seq !== searchSeq) return;
+        renderResults(err.code === PSE_EDGE_DOWN ? PSE_EDGE_DOWN_MESSAGE : `Search failed: ${err.message}`, true);
       }
     }, 250);
   });

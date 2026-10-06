@@ -99,8 +99,9 @@ const server = http.createServer(async (req, res) => {
   try {
     await handleApi(url, res);
   } catch (err) {
-    console.error(`${url.pathname}: ${err.message}`);
-    sendJson(res, 502, { error: err.message });
+    console.error(`${url.pathname}: ${err.detail || err.message}`);
+    // 503 for "PSE Edge is down" so the page can tell it apart from other errors.
+    sendJson(res, err.code ? 503 : 502, { error: err.message, code: err.code });
   }
 });
 

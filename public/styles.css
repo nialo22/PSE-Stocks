@@ -212,7 +212,10 @@ select { padding: 7px 8px; }
 .search-results .tag { margin-left: auto; font-size: 12px; color: var(--muted); }
 
 .meta { display: flex; gap: 16px; margin: 14px 2px 8px; font-size: 13px; }
-.error { color: var(--down); }
+.error { color: var(--down); font-weight: 600; }
+.search-results li.error-item { color: var(--down); font-weight: 600; opacity: 1; }
+#browse.is-error { color: var(--down); border-color: var(--down); font-weight: 600; }
+tr.stale td:not(.handle-cell):not(:last-child) { opacity: 0.55; }
 
 .table-wrap {
   background: var(--surface);
