@@ -113,16 +113,31 @@ code { font-size: 0.95em; }
   font-size: 12px;
   white-space: nowrap;
   background: var(--hover);
+  --dot: var(--muted);
 }
-.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-.pill.phase-trading { color: var(--up); background: var(--up-bg); }
-.pill.phase-trading::before { background: var(--up); }
+.pill.phase-trading { --dot: var(--up); color: var(--up); background: var(--up-bg); }
 .pill.phase-preopen, .pill.phase-preclose, .pill.phase-runoff, .pill.phase-recess {
+  --dot: var(--banner-text);
   color: var(--banner-text);
   background: var(--banner-bg);
 }
-.pill.phase-preopen::before, .pill.phase-preclose::before, .pill.phase-runoff::before, .pill.phase-recess::before {
-  background: currentColor;
+.pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot);
+  animation: pulse-dot 1.8s ease-out infinite;
+}
+/* A ring in the dot's colour grows out and fades, while the dot breathes. */
+@keyframes pulse-dot {
+  0% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--dot) 60%, transparent); }
+  50% { opacity: 0.55; }
+  70% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--dot) 0%, transparent); }
+  100% { opacity: 1; box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill::before { animation: none; }
 }
 .next-event { white-space: nowrap; }
 
