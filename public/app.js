@@ -956,6 +956,63 @@
 
   api('/api/config').then((cfg) => { els.demo.hidden = !cfg.demo; }).catch(() => {});
 
+  // ---------------------------------------------------------------------
+  // Announcement pop-up: shown on every visit, closes after 10 seconds or
+  // when closed. The countdown pauses while the pointer or focus is on it,
+  // so there's time to read or click the link.
+  // ---------------------------------------------------------------------
+
+  const ANNOUNCEMENT_MS = 10000;
+  const announcement = $('#announcement');
+  let announcementLeft = ANNOUNCEMENT_MS;
+  let announcementStarted = 0;
+  let announcementTimer = null;
+
+  function closeAnnouncement() {
+    if (announcement.hidden || announcement.classList.contains('closing')) return;
+    clearTimeout(announcementTimer);
+    document.removeEventListener('keydown', closeOnEscape);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      announcement.hidden = true;
+      return;
+    }
+    announcement.classList.add('closing');
+    announcement.addEventListener('animationend', () => { announcement.hidden = true; }, { once: true });
+  }
+
+  function runAnnouncementTimer() {
+    if (announcement.hidden || announcement.classList.contains('closing')) return;
+    clearTimeout(announcementTimer);
+    announcementStarted = Date.now();
+    announcementTimer = setTimeout(closeAnnouncement, announcementLeft);
+    announcement.classList.remove('paused');
+  }
+
+  function pauseAnnouncementTimer() {
+    if (announcement.classList.contains('paused')) return;
+    clearTimeout(announcementTimer);
+    announcementLeft = Math.max(0, announcementLeft - (Date.now() - announcementStarted));
+    announcement.classList.add('paused');
+  }
+
+  function closeOnEscape(e) {
+    if (e.key === 'Escape') closeAnnouncement();
+  }
+
+  announcement.style.setProperty('--announcement-duration', `${ANNOUNCEMENT_MS}ms`);
+  announcement.hidden = false;
+  runAnnouncementTimer();
+  $('#announcement-close').addEventListener('click', closeAnnouncement);
+  document.addEventListener('keydown', closeOnEscape);
+  announcement.addEventListener('pointerenter', pauseAnnouncementTimer);
+  announcement.addEventListener('pointerleave', () => {
+    if (!announcement.contains(document.activeElement)) runAnnouncementTimer();
+  });
+  announcement.addEventListener('focusin', pauseAnnouncementTimer);
+  announcement.addEventListener('focusout', (e) => {
+    if (!announcement.contains(e.relatedTarget) && !announcement.matches(':hover')) runAnnouncementTimer();
+  });
+
   saveSections();
   loadCompanies();
   renderSchedule();
