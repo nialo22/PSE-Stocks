@@ -5,12 +5,18 @@
   "main": "server.js",
   "private": true,
   "scripts": {
+    "build": "node scripts/copy-vendor.js",
+    "prestart": "npm run build --silent",
     "start": "node server.js",
+    "predemo": "npm run build --silent",
     "demo": "node server.js --demo",
     "test": "node --test"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
 }

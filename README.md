@@ -32,7 +32,7 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 ## Running it
 
-You need [Node.js](https://nodejs.org/) 18 or newer. There are no dependencies to install.
+You need [Node.js](https://nodejs.org/) 18 or newer.
 
 Get the code and run it from inside its folder (the same commands work in PowerShell
 on Windows and in a macOS or Linux terminal):
@@ -41,6 +41,7 @@ on Windows and in a macOS or Linux terminal):
 cd ~
 git clone https://github.com/nialo22/PSE-Stocks.git
 cd PSE-Stocks
+npm install
 npm start
 ```
 
@@ -95,3 +96,11 @@ npm test
   It doesn't know about exchange holidays or special trading days.
 - Please keep the refresh interval reasonable. PSE Edge is a public service.
 - This app is for information only and is not investment advice.
+
+## Analytics
+
+The page reports page views to [Vercel Web Analytics](https://vercel.com/docs/analytics)
+using the `@vercel/analytics` package. The site has no bundler, so `npm run build` copies
+the package's browser file into `public/vendor/` (Vercel and Netlify run this when they
+deploy, and `npm start` runs it first). Analytics only records data on Vercel, once Web
+Analytics is enabled for the project in the Vercel dashboard; it is skipped on localhost.

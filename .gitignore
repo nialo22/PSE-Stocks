@@ -1,4 +1,6 @@
 node_modules/
+# Copied from node_modules by `npm run build`
+public/vendor/
 .DS_Store
 *.log
 
