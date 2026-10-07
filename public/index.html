@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PSE Stocks Watchlist by Nialo</title>
   <script>
+    // Domain move: from 11:59 PM on Wednesday, October 7, 2026 (Manila time),
+    // visitors to the old Netlify address are sent to the new Vercel one,
+    // keeping the same path. Tabs left open move once that time passes.
+    (() => {
+      const OLD_HOST = 'psewatchlistbynialo.netlify.app';
+      const NEW_ORIGIN = 'https://psewatchlistbynialo.vercel.app';
+      const MOVE_AT = Date.parse('2026-10-07T23:59:00+08:00');
+      if (location.hostname !== OLD_HOST) return;
+      const moveIfDue = () => {
+        if (Date.now() >= MOVE_AT) location.replace(NEW_ORIGIN + location.pathname + location.search + location.hash);
+      };
+      moveIfDue();
+      setInterval(moveIfDue, 30000);
+      document.addEventListener('visibilitychange', moveIfDue);
+    })();
+  </script>
+  <script>
     // Apply the saved theme before the page paints, so it doesn't flash.
     try {
       const theme = localStorage.getItem('pse-stocks:theme');
