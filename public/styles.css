@@ -209,6 +209,7 @@ main { max-width: 1520px; margin: 0 auto; padding: 20px 24px; }
 .index-title { flex-shrink: 0; font-weight: 700; font-size: 15px; white-space: nowrap; }
 .index-headline { margin-left: auto; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .index-headline strong { margin-right: 6px; }
+.index-value { padding: 1px 3px; border-radius: 4px; }
 .index-caret { flex-shrink: 0; color: var(--muted); transition: transform 0.15s; }
 .index-panel.expanded .index-caret { transform: rotate(180deg); }
 .index-body { display: none; border-top: 1px solid var(--border); }

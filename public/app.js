@@ -315,12 +315,23 @@
   const fmtCount = (n) => (n == null ? '–' : n.toLocaleString('en-PH'));
   const arrow = (n) => (n > 0 ? '<span class="arrow">▲</span>' : n < 0 ? '<span class="arrow">▼</span>' : '');
 
+  // Last value seen per index, so a new value can flash green or red like
+  // the watchlist prices do.
+  const prevIndexValues = new Map();
+
+  function indexFlash(i) {
+    const prev = prevIndexValues.get(i.name);
+    if (prev == null || i.value == null || prev === i.value) return '';
+    return i.value > prev ? 'flash-up' : 'flash-down';
+  }
+
   function renderIndices(data) {
+    const flashes = new Map(data.indices.map((i) => [i.name, indexFlash(i)]));
     indexEls.rows.innerHTML = data.indices.map((i, n) => {
       const cls = dirClass(i.change);
       return `<tr${n === 0 ? ' class="headline"' : ''}>
         <td>${escapeHtml(i.name)}</td>
-        <td class="num">${fmtIndex(i.value)}</td>
+        <td class="num ${flashes.get(i.name)}">${fmtIndex(i.value)}</td>
         <td class="num ${cls}">${fmtIndex(Math.abs(i.change))}</td>
         <td class="num ${cls}">${fmtIndex(Math.abs(i.changePercent))}${arrow(i.change)}</td>
       </tr>`;
@@ -328,8 +339,10 @@
 
     const main = data.indices.find((i) => /^psei$/i.test(i.name)) || data.indices[0];
     const cls = dirClass(main.change);
-    indexEls.headline.innerHTML = `<strong>${escapeHtml(main.name)}</strong>${fmtIndex(main.value)}
+    indexEls.headline.innerHTML = `<strong>${escapeHtml(main.name)}</strong><span class="index-value ${flashes.get(main.name)}">${fmtIndex(main.value)}</span>
       <span class="${cls}">${arrow(main.change)}${fmtIndex(Math.abs(main.changePercent))}%</span>`;
+
+    for (const i of data.indices) if (i.value != null) prevIndexValues.set(i.name, i.value);
 
     const m = data.market || {};
     indexEls.state.textContent = m.status || '–';
