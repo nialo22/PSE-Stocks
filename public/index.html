@@ -121,14 +121,5 @@
   </div>
 
   <script src="app.js"></script>
-  <script type="module">
-    // Vercel Web Analytics (@vercel/analytics). Skipped when running on your
-    // own computer, since the tracking script only exists on Vercel.
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
-      import('./vendor/vercel-analytics.mjs')
-        .then(({ inject }) => inject())
-        .catch(() => { /* not deployed with a build step: no analytics */ });
-    }
-  </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 # server.js's /api/* routes (PSE Edge can't be called from the browser).
 [build]
   publish = "public"
-  command = "npm run build"
+  command = ""
 
 [functions]
   directory = "netlify/functions"
