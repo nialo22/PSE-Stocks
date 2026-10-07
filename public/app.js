@@ -956,6 +956,68 @@
 
   api('/api/config').then((cfg) => { els.demo.hidden = !cfg.demo; }).catch(() => {});
 
+  // ---------------------------------------------------------------------
+  // Announcement pop-up about the domain move: shown on every visit until
+  // the move time set in index.html (11:59 PM, October 7), but not on the
+  // new domain itself. Closes after 10 seconds or when closed; the countdown
+  // pauses while the pointer or focus is on it, so there's time to read or
+  // click the link.
+  // ---------------------------------------------------------------------
+
+  const ANNOUNCEMENT_MS = 10000;
+  const announcement = $('#announcement');
+  let announcementLeft = ANNOUNCEMENT_MS;
+  let announcementStarted = 0;
+  let announcementTimer = null;
+
+  function closeAnnouncement() {
+    if (announcement.hidden || announcement.classList.contains('closing')) return;
+    clearTimeout(announcementTimer);
+    document.removeEventListener('keydown', closeOnEscape);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      announcement.hidden = true;
+      return;
+    }
+    announcement.classList.add('closing');
+    announcement.addEventListener('animationend', () => { announcement.hidden = true; }, { once: true });
+  }
+
+  function runAnnouncementTimer() {
+    if (announcement.hidden || announcement.classList.contains('closing')) return;
+    clearTimeout(announcementTimer);
+    announcementStarted = Date.now();
+    announcementTimer = setTimeout(closeAnnouncement, announcementLeft);
+    announcement.classList.remove('paused');
+  }
+
+  function pauseAnnouncementTimer() {
+    if (announcement.classList.contains('paused')) return;
+    clearTimeout(announcementTimer);
+    announcementLeft = Math.max(0, announcementLeft - (Date.now() - announcementStarted));
+    announcement.classList.add('paused');
+  }
+
+  function closeOnEscape(e) {
+    if (e.key === 'Escape') closeAnnouncement();
+  }
+
+  const move = window.SITE_MOVE;
+  const showAnnouncement = !move || (Date.now() < move.at && location.hostname !== new URL(move.newOrigin).hostname);
+
+  announcement.style.setProperty('--announcement-duration', `${ANNOUNCEMENT_MS}ms`);
+  announcement.hidden = !showAnnouncement;
+  if (showAnnouncement) runAnnouncementTimer();
+  $('#announcement-close').addEventListener('click', closeAnnouncement);
+  document.addEventListener('keydown', closeOnEscape);
+  announcement.addEventListener('pointerenter', pauseAnnouncementTimer);
+  announcement.addEventListener('pointerleave', () => {
+    if (!announcement.contains(document.activeElement)) runAnnouncementTimer();
+  });
+  announcement.addEventListener('focusin', pauseAnnouncementTimer);
+  announcement.addEventListener('focusout', (e) => {
+    if (!announcement.contains(e.relatedTarget) && !announcement.matches(':hover')) runAnnouncementTimer();
+  });
+
   saveSections();
   loadCompanies();
   renderSchedule();
