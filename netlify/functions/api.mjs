@@ -37,6 +37,9 @@ async function handle(url) {
       return json(200, (await getService().search(q)).slice(0, 20));
     }
 
+    case '/api/indices':
+      return json(200, { fetchedAt: new Date().toISOString(), ...(await getService().indices()) });
+
     case '/api/companies':
       return json(200, await getService().companies());
 

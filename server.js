@@ -62,6 +62,9 @@ async function handleApi(url, res) {
       return sendJson(res, 200, (await service.search(q)).slice(0, 20));
     }
 
+    case '/api/indices':
+      return sendJson(res, 200, { fetchedAt: new Date().toISOString(), ...(await service.indices()) });
+
     case '/api/companies':
       return sendJson(res, 200, await service.companies());
 

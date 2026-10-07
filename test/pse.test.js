@@ -4,11 +4,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, createClient, PSE_EDGE_DOWN_MESSAGE } = require('../lib/pse');
+const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, parseIndexSummary, createClient, PSE_EDGE_DOWN_MESSAGE } = require('../lib/pse');
 const { createService, TtlCache } = require('../lib/service');
 
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'stockData.html'), 'utf8');
 const directoryFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'companyDirectory.html'), 'utf8');
+const indexFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'indexSummary.html'), 'utf8');
 
 test('parseStockData extracts the quote fields', () => {
   const q = parseStockData(fixture);
@@ -226,4 +227,42 @@ test('service.quotes reports PSE Edge being down per stock', async () => {
   } finally {
     console.error = errors;
   }
+});
+
+test('parseIndexSummary reads indices with their direction and the market box', () => {
+  const { indices, market } = parseIndexSummary(indexFixture);
+  assert.deepEqual(indices.map((i) => [i.name, i.value, i.change, i.changePercent]), [
+    ['PSEi', 5736.69, 59.57, 1.05],
+    ['All Shares', 3191.99, 21.26, 0.67],
+    ['Financials', 1771.18, 22.85, 1.31],
+    ['Industrial', 7271.56, -23.22, -0.32],
+    ['Holding Firms', 4182.8, 59.2, 1.44],
+    ['Services', 3114, 16.7, 0.54],
+    ['Mining and Oil', 19412.24, 310.76, 1.63],
+    ['Property', 1761.71, 22.77, 1.31],
+  ]);
+  assert.deepEqual(market, {
+    totalVolume: 513225914,
+    totalTrades: 73267,
+    totalValue: 4938226060,
+    advances: 80,
+    declines: 100,
+    unchanged: 68,
+    status: 'CLOSED',
+    asOf: 'Oct 7, 2026 3:40 PM',
+  });
+});
+
+test('parseIndexSummary handles down arrows as text and flags an unusable page', () => {
+  const html = '<table><tr><td>PSEi</td><td>5,629.03</td><td>0.44</td><td>0.01 &#9660;</td></tr></table>';
+  assert.deepEqual(parseIndexSummary(html).indices[0], { name: 'PSEi', value: 5629.03, change: -0.44, changePercent: -0.01 });
+  assert.throws(() => parseIndexSummary('<html>Just a moment...</html>'), (err) => err.code === 'PSE_EDGE_DOWN');
+});
+
+test('fetchIndexSummary requests /index/form.do', async () => {
+  const calls = [];
+  const client = createClient({ fetchImpl: async (url) => { calls.push(url); return { ok: true, status: 200, text: async () => indexFixture }; } });
+  const summary = await client.fetchIndexSummary();
+  assert.equal(calls[0], 'https://edge.pse.com.ph/index/form.do');
+  assert.equal(summary.indices.length, 8);
 });

@@ -5,6 +5,10 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 ## Features
 
+- **Index summary**: PSEi and the sector indices (value, change, % change), market status,
+  total volume, trades and value, and advances/declines/unchanged, refreshed with the
+  watchlist. On wide screens it sits on the left; on phones and tablets it's a bar above the
+  watchlist showing the PSEi, which you tap to expand.
 - **Watchlist**: search by symbol or company name, add with a click or Enter, and remove with ×.
   The list is saved in your browser, so it's still there next time you open the app.
 - **Browse all stocks**: next to the search box is a dropdown of every PSE-listed stock,
@@ -69,6 +73,7 @@ PSE Edge has no public API, and browsers can't call it directly from another sit
 | App endpoint                         | PSE Edge source                                           |
 | ------------------------------------ | --------------------------------------------------------- |
 | `GET /api/search?q=jollibee`         | `/autoComplete/searchCompanyNameSymbol.ax` (company search) |
+| `GET /api/indices`                   | `/index/form.do` (index summary and market totals)         |
 | `GET /api/companies`                 | `/companyDirectory/search.ax` (every listed company, all pages) |
 | `GET /api/quotes?symbols=JFC,ALI`    | `/companyPage/stockData.do` (stock data page, parsed from HTML) |
 | `GET /api/history?symbol=JFC&days=30`| `/common/DisclosureCht.ax` (daily price chart data)       |

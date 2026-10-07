@@ -240,6 +240,7 @@
   }
 
   async function refresh() {
+    refreshIndices();
     if (state.loading) return;
     const items = allItems();
     if (!items.length) {
@@ -292,6 +293,89 @@
       loadMissingHistory();
     }
   }
+
+  // ---------------------------------------------------------------------
+  // Index summary panel (PSEi, sector indices and market totals)
+  // ---------------------------------------------------------------------
+
+  const INDEX_EXPANDED_KEY = 'pse-stocks:index-expanded';
+  const indexEls = {
+    panel: $('#index-panel'),
+    toggle: $('#index-toggle'),
+    headline: $('#index-headline'),
+    rows: $('#index-rows'),
+    state: $('#market-state'),
+    asOf: $('#market-asof'),
+    error: $('#index-error'),
+  };
+  let indexLoading = false;
+  let indexLoaded = false;
+
+  const fmtIndex = (n) => (n == null ? '–' : n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const fmtCount = (n) => (n == null ? '–' : n.toLocaleString('en-PH'));
+  const arrow = (n) => (n > 0 ? '<span class="arrow">▲</span>' : n < 0 ? '<span class="arrow">▼</span>' : '');
+
+  function renderIndices(data) {
+    indexEls.rows.innerHTML = data.indices.map((i, n) => {
+      const cls = dirClass(i.change);
+      return `<tr${n === 0 ? ' class="headline"' : ''}>
+        <td>${escapeHtml(i.name)}</td>
+        <td class="num">${fmtIndex(i.value)}</td>
+        <td class="num ${cls}">${fmtIndex(Math.abs(i.change))}</td>
+        <td class="num ${cls}">${fmtIndex(Math.abs(i.changePercent))}${arrow(i.change)}</td>
+      </tr>`;
+    }).join('');
+
+    const main = data.indices.find((i) => /^psei$/i.test(i.name)) || data.indices[0];
+    const cls = dirClass(main.change);
+    indexEls.headline.innerHTML = `<strong>${escapeHtml(main.name)}</strong>${fmtIndex(main.value)}
+      <span class="${cls}">${arrow(main.change)}${fmtIndex(Math.abs(main.changePercent))}%</span>`;
+
+    const m = data.market || {};
+    indexEls.state.textContent = m.status || '–';
+    indexEls.state.classList.toggle('open', /open/i.test(m.status || ''));
+    indexEls.asOf.textContent = m.asOf ? `As of ${m.asOf}` : '';
+    for (const key of ['totalVolume', 'totalTrades', 'totalValue', 'advances', 'declines', 'unchanged']) {
+      $(`#stat-${key}`).textContent = fmtCount(m[key]);
+    }
+  }
+
+  async function refreshIndices() {
+    if (indexLoading) return;
+    indexLoading = true;
+    try {
+      const data = await api('/api/indices');
+      renderIndices(data);
+      indexLoaded = true;
+      indexEls.panel.classList.remove('stale');
+      indexEls.error.hidden = true;
+    } catch (err) {
+      // Keep the last figures on screen (faded) if we had any.
+      indexEls.panel.classList.toggle('stale', indexLoaded);
+      if (!indexLoaded) indexEls.rows.innerHTML = '<tr><td colspan="4" class="muted">Index data unavailable</td></tr>';
+      indexEls.error.textContent = err.code === PSE_EDGE_DOWN ? PSE_EDGE_DOWN_MESSAGE : `Couldn't load the index summary: ${err.message}`;
+      indexEls.error.hidden = false;
+    } finally {
+      indexLoading = false;
+    }
+  }
+
+  // On wide screens the panel is a sidebar and always open (see styles.css).
+  const indexAlwaysOpen = window.matchMedia('(min-width: 1100px)');
+
+  function setIndexExpanded(expanded) {
+    indexEls.panel.classList.toggle('expanded', expanded);
+    indexEls.toggle.setAttribute('aria-expanded', String(expanded || indexAlwaysOpen.matches));
+    indexEls.toggle.tabIndex = indexAlwaysOpen.matches ? -1 : 0;
+  }
+
+  setIndexExpanded(load(INDEX_EXPANDED_KEY, false) === true);
+  indexAlwaysOpen.addEventListener('change', () => setIndexExpanded(indexEls.panel.classList.contains('expanded')));
+  indexEls.toggle.addEventListener('click', () => {
+    const expanded = !indexEls.panel.classList.contains('expanded');
+    setIndexExpanded(expanded);
+    save(INDEX_EXPANDED_KEY, expanded);
+  });
 
   function loadMissingHistory() {
     for (const { symbol } of allItems()) {
