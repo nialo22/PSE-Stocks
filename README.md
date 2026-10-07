@@ -5,6 +5,12 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
 
 ## Features
 
+- **Portfolio tracker**: switch the watchlist to the Portfolio view and add your shares and
+  average cost per stock. It shows market value, today's gain, unrealized profit/loss (₱ and
+  %) and each stock's weight, with totals at the top and per section. Profit/loss can subtract
+  estimated selling fees (broker commission + VAT, PSE fee + VAT, SCCP fee, 0.1% stock
+  transaction tax); the commission rate and minimum are editable in Fee settings. Positions
+  are saved only in your browser.
 - **Index summary**: PSEi and the sector indices (value, change, % change), market status,
   total volume, trades and value, and advances/declines/unchanged, refreshed with the
   watchlist. On wide screens it sits on the left; on phones and tablets it's a bar above the

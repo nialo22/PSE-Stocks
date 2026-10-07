@@ -557,12 +557,15 @@
     const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
     const remove = `<td><button class="remove" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button></td>`;
 
-    if (!q) {
-      return `<tr data-symbol="${sym}">${handle}${symCell}<td class="num muted" colspan="9">Loading…</td>${remove}</tr>`;
-    }
+    // One cell per column (no colspan): spanning columns that are hidden on
+    // narrow screens makes browsers mis-size the table.
+    const placeholderRow = (content, cls = '') => `<tr class="${cls}" data-symbol="${sym}">${handle}${symCell}
+      <td class="placeholder">${content}</td><td class="hide-sm"></td><td></td><td class="hide-sm"></td><td class="hide-sm"></td>
+      <td class="hide-sm"></td><td class="hide-md"></td><td class="hide-sm"></td><td class="hide-md"></td>${remove}</tr>`;
+    if (!q) return placeholderRow('<span class="muted">Loading…</span>');
     if (q.error) {
       const text = q.code === PSE_EDGE_DOWN ? 'Price unavailable' : q.error;
-      return `<tr class="row-error" data-symbol="${sym}">${handle}${symCell}<td class="err" colspan="9">${escapeHtml(text)}</td>${remove}</tr>`;
+      return placeholderRow(`<span class="err">${escapeHtml(text)}</span>`, 'row-error');
     }
     const cls = dirClass(q.change);
     const stale = q.stale ? ' class="stale" title="Last known price. PSE Edge is not responding right now."' : '';

@@ -56,6 +56,8 @@
 }
 
 * { box-sizing: border-box; }
+/* The hidden attribute always wins over display rules set below. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -339,7 +341,8 @@ tbody tr:hover { background: var(--hover); }
 .chg-badge { display: inline-block; min-width: 64px; padding: 2px 6px; border-radius: 5px; }
 .up .chg-badge { background: var(--up-bg); }
 .down .chg-badge { background: var(--down-bg); }
-.row-error td.err { color: var(--down); font-size: 12px; white-space: normal; }
+.row-error td.err, .row-error .err { color: var(--down); font-size: 12px; white-space: normal; }
+td.placeholder { white-space: normal; }
 
 @keyframes flash-up { from { background: var(--up-bg); } to { background: transparent; } }
 @keyframes flash-down { from { background: var(--down-bg); } to { background: transparent; } }
