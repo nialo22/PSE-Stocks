@@ -124,6 +124,40 @@
       </div>
     </section>
 
+    <div class="view-bar">
+      <div class="view-tabs" role="tablist" aria-label="Watchlist view">
+        <button type="button" role="tab" class="view-tab" data-view="prices" aria-selected="true">Prices</button>
+        <button type="button" role="tab" class="view-tab" data-view="portfolio" aria-selected="false">Portfolio</button>
+      </div>
+      <button id="fee-settings" type="button" class="btn btn-small" hidden>Fee settings</button>
+    </div>
+
+    <section id="pf-summary" class="pf-summary" aria-label="Portfolio summary" hidden>
+      <div class="stat">
+        <span class="stat-label">Market value</span>
+        <span class="stat-value" id="pf-value">–</span>
+        <span class="stat-delta muted" id="pf-count"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Unrealized P/L</span>
+        <span class="stat-value" id="pf-pl">–</span>
+        <span class="stat-delta" id="pf-pl-pct"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Today's gain</span>
+        <span class="stat-value" id="pf-day">–</span>
+        <span class="stat-delta" id="pf-day-pct"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Total cost</span>
+        <span class="stat-value" id="pf-cost">–</span>
+        <span class="stat-delta muted" id="pf-fee-note"></span>
+      </div>
+    </section>
+    <p id="pf-empty" class="pf-empty" hidden>
+      No positions yet. Click <strong>+ Add position</strong> on any stock below to enter how many shares you own and your average cost.
+    </p>
+
     <div class="meta muted">
       <span id="updated">Not updated yet</span>
       <span id="error" class="error" role="alert" hidden></span>
@@ -131,22 +165,7 @@
 
     <section class="table-wrap">
       <table id="watchlist">
-        <thead>
-          <tr>
-            <th class="handle-cell" aria-label="Reorder"></th>
-            <th data-sort="symbol">Symbol</th>
-            <th data-sort="last" class="num">Last</th>
-            <th data-sort="change" class="num hide-sm">Change</th>
-            <th data-sort="changePercent" class="num">% Chg</th>
-            <th data-sort="open" class="num hide-sm">Open</th>
-            <th data-sort="high" class="num hide-sm">High</th>
-            <th data-sort="low" class="num hide-sm">Low</th>
-            <th data-sort="prevClose" class="num hide-md">Prev close</th>
-            <th data-sort="volume" class="num hide-sm">Volume</th>
-            <th class="hide-md">30 days</th>
-            <th aria-label="Actions"></th>
-          </tr>
-        </thead>
+        <thead></thead>
         <tbody></tbody>
       </table>
       <div id="drop-indicator" class="drop-indicator" hidden></div>
@@ -170,6 +189,61 @@
     <button id="announcement-close" class="announcement-close" type="button" aria-label="Close announcement">×</button>
     <div class="announcement-timer" aria-hidden="true"></div>
   </div>
+
+  <dialog id="position-dialog" class="dialog" aria-labelledby="position-title">
+    <form id="position-form" method="dialog" novalidate>
+      <h2 id="position-title">Position</h2>
+      <p id="position-sub" class="muted dialog-sub"></p>
+      <label class="field">
+        <span>Number of shares</span>
+        <input id="pos-shares" type="number" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <label class="field">
+        <span>Average cost per share (₱)</span>
+        <input id="pos-avg" type="number" min="0" step="any" inputmode="decimal" required>
+      </label>
+      <p class="hint">Use the average price your broker shows. It usually already includes buying fees.</p>
+      <p id="pos-preview" class="pos-preview"></p>
+      <p id="pos-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button id="pos-remove" type="button" class="btn btn-danger">Remove position</button>
+        <span class="spacer"></span>
+        <button id="pos-cancel" type="button" class="btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="fees-dialog" class="dialog" aria-labelledby="fees-title">
+    <form id="fees-form" method="dialog" novalidate>
+      <h2 id="fees-title">Fee settings</h2>
+      <p class="muted dialog-sub">Used to estimate what you'd actually receive if you sold today.</p>
+      <label class="check">
+        <input id="fee-deduct" type="checkbox">
+        <span>Subtract selling fees from profit/loss</span>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Broker commission (%)</span>
+          <input id="fee-pct" type="number" min="0" step="0.01" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Minimum commission (₱)</span>
+          <input id="fee-min" type="number" min="0" step="1" inputmode="decimal">
+        </label>
+      </div>
+      <p class="hint">
+        Selling fees: broker commission + 12% VAT, PSE fee 0.005% + 12% VAT, SCCP fee 0.01%,
+        and stock transaction tax 0.1%. Commission varies by broker; the default is 0.25% with a ₱20 minimum.
+      </p>
+      <div class="dialog-actions">
+        <button id="fee-reset" type="button" class="btn">Reset to defaults</button>
+        <span class="spacer"></span>
+        <button id="fee-cancel" type="button" class="btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

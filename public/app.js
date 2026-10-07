@@ -16,8 +16,18 @@
   const PSE_EDGE_DOWN_MESSAGE = 'PSE Edge Website is currently down. Please try again later.';
   // Polling slows down outside trading hours, when PSE Edge prices don't move.
   const CLOSED_MARKET_INTERVAL_S = 300;
-  // Columns in a stock row: drag handle, symbol, 9 data columns, remove.
-  const COLUMN_COUNT = 12;
+  // Columns in a stock row. Prices view: drag handle, symbol, 9 data columns,
+  // remove. Portfolio view: drag handle, symbol, 5 data columns, actions.
+  const VIEW_COLUMNS = { prices: 12, portfolio: 8 };
+  const columnCount = () => VIEW_COLUMNS[state.settings.view] || VIEW_COLUMNS.prices;
+
+  // Philippine selling costs (since the July 2025 CMEPA tax cut). Broker
+  // commission varies, so it is a setting; the rest are fixed.
+  const FEE_DEFAULTS = { commissionPct: 0.25, commissionMin: 20, deductSellFees: true };
+  const VAT = 0.12;
+  const PSE_FEE = 0.00005;
+  const SCCP_FEE = 0.0001;
+  const SALES_TAX = 0.001;
 
   const $ = (sel) => document.querySelector(sel);
   const els = {
@@ -39,6 +49,10 @@
     clock: $('#clock'),
     schedule: $('#schedule-phases'),
     demo: $('#demo-banner'),
+    viewTabs: document.querySelectorAll('.view-tab'),
+    feeSettings: $('#fee-settings'),
+    pfSummary: $('#pf-summary'),
+    pfEmpty: $('#pf-empty'),
   };
 
   // ---------------------------------------------------------------------
@@ -73,7 +87,14 @@
 
   const state = {
     sections: loadSections(),
-    settings: { interval: 30, sort: null, asc: false, addTarget: null, ...load(SETTINGS_KEY, {}) },
+    settings: (() => {
+      const saved = load(SETTINGS_KEY, {});
+      return {
+        interval: 30, sort: null, asc: false, addTarget: null, view: 'prices',
+        ...saved,
+        fees: { ...FEE_DEFAULTS, ...(saved.fees || {}) },
+      };
+    })(),
     quotes: new Map(),
     history: new Map(),
     companies: null,
@@ -436,15 +457,86 @@
     return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="M${pts.join('L')}" stroke="${color}"/></svg>`;
   }
 
+  // ---------------------------------------------------------------------
+  // Portfolio maths
+  // ---------------------------------------------------------------------
+
+  const hasPosition = (item) => item.shares > 0 && item.avgCost > 0;
+
+  /** What it would cost to sell shares worth `gross` pesos today. */
+  function sellingFees(gross) {
+    const { commissionPct, commissionMin } = state.settings.fees;
+    const commission = Math.max(gross * (commissionPct / 100), commissionMin);
+    const pseFee = gross * PSE_FEE;
+    return commission * (1 + VAT) + pseFee * (1 + VAT) + gross * SCCP_FEE + gross * SALES_TAX;
+  }
+
+  /** Value and profit/loss of the shares held in one watchlist item. */
+  function positionOf(item) {
+    if (!hasPosition(item)) return null;
+    const q = state.quotes.get(item.symbol);
+    const priced = q && !q.error && q.last != null;
+    const cost = item.shares * item.avgCost;
+    const value = priced ? item.shares * q.last : null;
+    const fees = priced && state.settings.fees.deductSellFees ? sellingFees(value) : 0;
+    const pl = priced ? value - fees - cost : null;
+    return {
+      shares: item.shares,
+      avgCost: item.avgCost,
+      cost,
+      value,
+      fees,
+      pl,
+      plPercent: priced ? (pl / cost) * 100 : null,
+      dayGain: priced && q.change != null ? item.shares * q.change : null,
+      dayPercent: priced ? q.changePercent : null,
+    };
+  }
+
+  function portfolioTotals() {
+    const t = { value: 0, cost: 0, pl: 0, dayGain: 0, fees: 0, positions: 0, unpriced: 0 };
+    for (const item of allItems()) {
+      const p = positionOf(item);
+      if (!p) continue;
+      t.positions++;
+      if (p.value == null) {
+        t.unpriced++;
+        continue;
+      }
+      t.value += p.value;
+      t.cost += p.cost;
+      t.pl += p.pl;
+      t.fees += p.fees;
+      t.dayGain += p.dayGain ?? 0;
+    }
+    t.plPercent = t.cost ? (t.pl / t.cost) * 100 : null;
+    const prevValue = t.value - t.dayGain;
+    t.dayPercent = prevValue ? (t.dayGain / prevValue) * 100 : null;
+    return t;
+  }
+
+  /** The number a column sorts by, for both views. */
+  function sortValue(item, key, totalValue) {
+    const p = positionOf(item);
+    switch (key) {
+      case 'marketValue': return p?.value ?? null;
+      case 'pl': return p?.pl ?? null;
+      case 'dayGain': return p?.dayGain ?? null;
+      case 'weight': return p?.value != null && totalValue ? p.value / totalValue : null;
+      default: return state.quotes.get(item.symbol)?.[key] ?? null;
+    }
+  }
+
   /** Applies the column sort, if any, within one section. */
   function sortedItems(items) {
     const { sort, asc } = state.settings;
     if (!sort) return items;
     const dir = asc ? 1 : -1;
+    const totalValue = portfolioTotals().value;
     return [...items].sort((a, b) => {
       if (sort === 'symbol') return a.symbol.localeCompare(b.symbol) * dir;
-      const av = state.quotes.get(a.symbol)?.[sort];
-      const bv = state.quotes.get(b.symbol)?.[sort];
+      const av = sortValue(a, sort, totalValue);
+      const bv = sortValue(b, sort, totalValue);
       if (av == null) return 1;
       if (bv == null) return -1;
       return (av - bv) * dir;
@@ -490,6 +582,121 @@
     </tr>`;
   }
 
+  const fmtMoney = (n) => (n == null ? '–' : `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const fmtSignedMoney = (n) => fmtSigned(n, '', (v) => fmtMoney(v));
+  const fmtPct = (n) => fmtSigned(n, '%', (v) => v.toFixed(2));
+  const fmtShares = (n) => n.toLocaleString('en-PH', { maximumFractionDigits: 0 });
+
+  function portfolioRowHtml(item) {
+    const sym = escapeHtml(item.symbol);
+    const q = state.quotes.get(item.symbol);
+    const p = positionOf(item);
+    const link = pseLink(q);
+    const subLine = p
+      ? `<span class="name position-line">${fmtShares(p.shares)} sh @ ${fmtPrice(p.avgCost)}</span>`
+      : `<span class="name">${escapeHtml(item.name || q?.name || '')}</span>`;
+    const symHtml = `<span class="sym">${sym}</span>${subLine}`;
+    const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
+    const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
+    const actions = `<td class="row-actions">
+      ${p ? `<button class="icon-btn" type="button" data-edit-position="${sym}" title="Edit position" aria-label="Edit ${sym} position">${PENCIL_ICON}</button>` : ''}
+      <button class="remove hide-sm" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button>
+    </td>`;
+
+    // One cell per column (no colspan): spanning columns that are hidden on
+    // narrow screens makes browsers mis-size the table.
+    const placeholderRow = (content, cls = '') => `<tr data-symbol="${sym}" class="${cls}">${handle}${symCell}
+      <td class="hide-sm"></td><td class="num">${content}</td><td class="hide-sm"></td><td class="hide-sm"></td><td class="hide-md"></td>${actions}</tr>`;
+    if (!p) {
+      return placeholderRow(`<button class="link-btn" type="button" data-edit-position="${sym}">+ Add position</button>`, 'no-position');
+    }
+    if (p.value == null) {
+      const text = !q ? 'Loading…' : q.code === PSE_EDGE_DOWN ? 'Price unavailable' : (q.error || 'Price unavailable');
+      return placeholderRow(`<span class="${q?.error ? 'err' : 'muted'}">${escapeHtml(text)}</span>`);
+    }
+    const total = portfolioTotals().value;
+    const stale = q.stale ? ' class="stale" title="Last known price. PSE Edge is not responding right now."' : '';
+    const feeNote = p.fees ? ` title="After estimated selling fees of ${fmtMoney(p.fees)}"` : '';
+    return `<tr data-symbol="${sym}"${stale}>
+      ${handle}
+      ${symCell}
+      <td class="num last hide-sm ${q.flash || ''}">${fmtPrice(q.last)}</td>
+      <td class="num value ${q.flash || ''}">${fmtMoney(p.value)}<span class="cell-sub show-sm ${dirClass(p.pl)}">${fmtSignedMoney(p.pl)}</span><span class="cell-sub show-sm ${dirClass(p.pl)}">${fmtPct(p.plPercent)}</span></td>
+      <td class="num hide-sm ${dirClass(p.dayGain)}">${fmtSignedMoney(p.dayGain)}<span class="cell-sub">${fmtPct(p.dayPercent)}</span></td>
+      <td class="num hide-sm ${dirClass(p.pl)}"${feeNote}><strong>${fmtSignedMoney(p.pl)}</strong><span class="cell-sub">${fmtPct(p.plPercent)}</span></td>
+      <td class="num hide-md">${total ? `${((p.value / total) * 100).toFixed(1)}%` : '–'}</td>
+      ${actions}
+    </tr>`;
+  }
+
+  function sectionSubtotalHtml(section) {
+    let value = 0;
+    let pl = 0;
+    let cost = 0;
+    for (const item of section.items) {
+      const p = positionOf(item);
+      if (!p || p.value == null) continue;
+      value += p.value;
+      pl += p.pl;
+      cost += p.cost;
+    }
+    if (!cost) return '';
+    return `<span class="section-total"><span class="hide-sm">${fmtMoney(value)}</span>
+      <span class="${dirClass(pl)}">${fmtSignedMoney(pl)}<span class="hide-sm"> (${fmtPct((pl / cost) * 100)})</span></span></span>`;
+  }
+
+  const HEADS = {
+    prices: [
+      ['symbol', 'Symbol', ''], ['last', 'Last', 'num'], ['change', 'Change', 'num hide-sm'],
+      ['changePercent', '% Chg', 'num'], ['open', 'Open', 'num hide-sm'], ['high', 'High', 'num hide-sm'],
+      ['low', 'Low', 'num hide-sm'], ['prevClose', 'Prev close', 'num hide-md'], ['volume', 'Volume', 'num hide-sm'],
+      [null, '30 days', 'hide-md'],
+    ],
+    portfolio: [
+      ['symbol', 'Symbol', ''], ['last', 'Last', 'num hide-sm'], ['marketValue', '<span class="hide-sm">Market value</span><span class="show-sm">Value · P/L</span>', 'num'],
+      ['dayGain', "Today's gain", 'num hide-sm'], ['pl', 'Unrealized P/L', 'num hide-sm'], ['weight', 'Weight', 'num hide-md'],
+    ],
+  };
+
+  function renderHead() {
+    const cols = HEADS[state.settings.view] || HEADS.prices;
+    const ths = cols.map(([key, label, cls]) =>
+      `<th${key ? ` data-sort="${key}"` : ''}${cls ? ` class="${cls}"` : ''}>${label}</th>`).join('');
+    els.table.querySelector('thead').innerHTML =
+      `<tr><th class="handle-cell" aria-label="Reorder"></th>${ths}<th aria-label="Actions"></th></tr>`;
+  }
+
+  function renderPortfolioSummary() {
+    const show = state.settings.view === 'portfolio';
+    els.pfSummary.hidden = !show;
+    els.feeSettings.hidden = !show;
+    for (const tab of els.viewTabs) tab.setAttribute('aria-selected', String(tab.dataset.view === state.settings.view));
+    els.table.classList.toggle('portfolio', show);
+    if (!show) {
+      els.pfEmpty.hidden = true;
+      return;
+    }
+    const t = portfolioTotals();
+    els.pfEmpty.hidden = t.positions > 0;
+    const set = (id, text, cls) => {
+      const el = $(id);
+      el.textContent = text;
+      if (cls !== undefined) el.className = `${el.className.split(' ')[0]} ${cls}`.trim();
+    };
+    set('#pf-value', t.positions ? fmtMoney(t.value) : '–');
+    set('#pf-count', t.positions
+      ? `${t.positions} position${t.positions === 1 ? '' : 's'}${t.unpriced ? ` · ${t.unpriced} without a price` : ''}`
+      : '');
+    set('#pf-pl', t.positions ? fmtSignedMoney(t.pl) : '–', t.positions ? dirClass(t.pl) : '');
+    set('#pf-pl-pct', t.plPercent == null ? '' : `${fmtPct(t.plPercent)} overall`, dirClass(t.pl));
+    set('#pf-day', t.positions ? fmtSignedMoney(t.dayGain) : '–', t.positions ? dirClass(t.dayGain) : '');
+    set('#pf-day-pct', t.dayPercent == null ? '' : `${fmtPct(t.dayPercent)} today`, dirClass(t.dayGain));
+    set('#pf-cost', t.positions ? fmtMoney(t.cost) : '–');
+    set('#pf-fee-note', t.positions && state.settings.fees.deductSellFees
+      ? `P/L is after ~${fmtMoney(t.fees)} selling fees`
+      : t.positions ? 'P/L is before selling fees' : '');
+  }
+
   function sectionHtml(section) {
     const id = escapeHtml(section.id);
     const name = escapeHtml(section.name);
@@ -500,12 +707,13 @@
       : `<span class="section-name" data-rename="${id}" title="Double-click to rename">${name}</span>`;
     const head = `<tr class="section-head">
       <td class="handle-cell"><button class="drag-handle" type="button" data-drag="section" data-section-id="${id}" title="Drag to move this section" aria-label="Move section ${name}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>
-      <td colspan="${COLUMN_COUNT - 1}">
+      <td colspan="${columnCount() - 1}">
         <div class="section-bar">
           <button class="icon-btn collapse-btn" type="button" data-toggle="${id}" aria-expanded="${!section.collapsed}" title="${section.collapsed ? 'Expand' : 'Collapse'}">${CARET_ICON}</button>
           ${title}
           <span class="count">${section.items.length}</span>
           <span class="spacer"></span>
+          ${state.settings.view === 'portfolio' ? sectionSubtotalHtml(section) : ''}
           <button class="icon-btn" type="button" data-rename="${id}" title="Rename section" aria-label="Rename section ${name}">${PENCIL_ICON}</button>
           ${canDelete ? `<button class="icon-btn danger" type="button" data-delete-section="${id}" title="Delete section" aria-label="Delete section ${name}">${TRASH_ICON}</button>` : ''}
         </div>
@@ -514,8 +722,8 @@
     let body = '';
     if (!section.collapsed) {
       body = section.items.length
-        ? sortedItems(section.items).map(rowHtml).join('')
-        : `<tr class="section-empty"><td></td><td colspan="${COLUMN_COUNT - 1}" class="muted">No stocks yet. Search or pick from the list above, or drag a stock here.</td></tr>`;
+        ? sortedItems(section.items).map(state.settings.view === 'portfolio' ? portfolioRowHtml : rowHtml).join('')
+        : `<tr class="section-empty"><td></td><td colspan="${columnCount() - 1}" class="muted">No stocks yet. Search or pick from the list above, or drag a stock here.</td></tr>`;
     }
     return `<tbody class="section${section.collapsed ? ' collapsed' : ''}" data-section-id="${id}">${head}${body}</tbody>`;
   }
@@ -552,8 +760,10 @@
 
     els.table.querySelectorAll('tbody').forEach((b) => b.remove());
     state.renderingRename = false;
+    renderHead();
     els.table.insertAdjacentHTML('beforeend', state.sections.map(sectionHtml).join(''));
     renderSortHeaders();
+    renderPortfolioSummary();
     renderAddTarget();
     renderBrowse();
     for (const q of state.quotes.values()) q.flash = '';
@@ -587,6 +797,8 @@
   }
 
   function removeFromWatchlist(symbol) {
+    const item = sectionOf(symbol)?.items.find((i) => i.symbol === symbol);
+    if (item && hasPosition(item) && !confirm(`Remove ${symbol}? Your position (${item.shares} shares) will be deleted too.`)) return;
     for (const s of state.sections) s.items = s.items.filter((w) => w.symbol !== symbol);
     state.quotes.delete(symbol);
     saveSections();
@@ -635,6 +847,8 @@
 
   els.table.addEventListener('click', (e) => {
     const t = e.target;
+    const edit = t.closest('[data-edit-position]');
+    if (edit) return openPositionDialog(edit.dataset.editPosition);
     const remove = t.closest('[data-remove]');
     if (remove) return removeFromWatchlist(remove.dataset.remove);
     const toggle = t.closest('[data-toggle]');
@@ -694,6 +908,140 @@
     saveSettings();
     render();
   }
+
+  // ---------------------------------------------------------------------
+  // Portfolio: view switch, position editor and fee settings
+  // ---------------------------------------------------------------------
+
+  function setView(view) {
+    if (state.settings.view === view) return;
+    state.settings.view = view;
+    // Drop a column sort the new view doesn't have.
+    const keys = (HEADS[view] || []).map(([key]) => key);
+    if (!keys.includes(state.settings.sort)) state.settings.sort = null;
+    saveSettings();
+    render();
+  }
+
+  for (const tab of els.viewTabs) tab.addEventListener('click', () => setView(tab.dataset.view));
+
+  const posDialog = $('#position-dialog');
+  const posEls = {
+    title: $('#position-title'),
+    sub: $('#position-sub'),
+    shares: $('#pos-shares'),
+    avg: $('#pos-avg'),
+    preview: $('#pos-preview'),
+    error: $('#pos-error'),
+    remove: $('#pos-remove'),
+  };
+  let editingSymbol = null;
+
+  function findItem(symbol) {
+    return sectionOf(symbol)?.items.find((i) => i.symbol === symbol) || null;
+  }
+
+  function readPositionForm() {
+    const shares = Number(posEls.shares.value);
+    const avgCost = Number(posEls.avg.value);
+    if (!posEls.shares.value || !Number.isInteger(shares) || shares <= 0) return { error: 'Enter a whole number of shares, more than 0.' };
+    if (!posEls.avg.value || !(avgCost > 0)) return { error: 'Enter your average cost per share, more than ₱0.' };
+    return { shares, avgCost };
+  }
+
+  function renderPositionPreview() {
+    const item = findItem(editingSymbol);
+    const form = readPositionForm();
+    if (!item || form.error) {
+      posEls.preview.textContent = '';
+      return;
+    }
+    const p = positionOf({ ...item, ...form });
+    posEls.preview.innerHTML = p.value == null
+      ? `Cost: <strong>${fmtMoney(p.cost)}</strong>`
+      : `Cost <strong>${fmtMoney(p.cost)}</strong> · Value now <strong>${fmtMoney(p.value)}</strong> ·
+         P/L <strong class="nowrap ${dirClass(p.pl)}">${fmtSignedMoney(p.pl)} (${fmtPct(p.plPercent)})</strong>`;
+  }
+
+  function openPositionDialog(symbol) {
+    const item = findItem(symbol);
+    if (!item) return;
+    editingSymbol = symbol;
+    const q = state.quotes.get(symbol);
+    posEls.title.textContent = `${symbol} position`;
+    posEls.sub.textContent = [item.name || q?.name, q?.last != null && !q.error ? `Last price ${fmtPrice(q.last)}` : null]
+      .filter(Boolean).join(' · ');
+    posEls.shares.value = hasPosition(item) ? item.shares : '';
+    posEls.avg.value = hasPosition(item) ? item.avgCost : '';
+    posEls.remove.hidden = !hasPosition(item);
+    posEls.error.hidden = true;
+    renderPositionPreview();
+    posDialog.showModal();
+    posEls.shares.focus();
+  }
+
+  for (const input of [posEls.shares, posEls.avg]) {
+    input.addEventListener('input', () => {
+      posEls.error.hidden = true;
+      renderPositionPreview();
+    });
+  }
+  $('#pos-cancel').addEventListener('click', () => posDialog.close());
+
+  $('#position-form').addEventListener('submit', (e) => {
+    const form = readPositionForm();
+    if (form.error) {
+      e.preventDefault();
+      posEls.error.textContent = form.error;
+      posEls.error.hidden = false;
+      return;
+    }
+    const item = findItem(editingSymbol);
+    if (item) {
+      item.shares = form.shares;
+      item.avgCost = form.avgCost;
+      saveSections();
+      render();
+    }
+  });
+
+  posEls.remove.addEventListener('click', () => {
+    const item = findItem(editingSymbol);
+    if (item) {
+      delete item.shares;
+      delete item.avgCost;
+      saveSections();
+      render();
+    }
+    posDialog.close();
+  });
+
+  const feesDialog = $('#fees-dialog');
+  const feeEls = { deduct: $('#fee-deduct'), pct: $('#fee-pct'), min: $('#fee-min') };
+
+  function fillFeeForm(fees) {
+    feeEls.deduct.checked = fees.deductSellFees;
+    feeEls.pct.value = fees.commissionPct;
+    feeEls.min.value = fees.commissionMin;
+  }
+
+  els.feeSettings.addEventListener('click', () => {
+    fillFeeForm(state.settings.fees);
+    feesDialog.showModal();
+  });
+  $('#fee-reset').addEventListener('click', () => fillFeeForm(FEE_DEFAULTS));
+  $('#fee-cancel').addEventListener('click', () => feesDialog.close());
+  $('#fees-form').addEventListener('submit', () => {
+    const pct = Number(feeEls.pct.value);
+    const min = Number(feeEls.min.value);
+    state.settings.fees = {
+      deductSellFees: feeEls.deduct.checked,
+      commissionPct: feeEls.pct.value !== '' && pct >= 0 ? pct : FEE_DEFAULTS.commissionPct,
+      commissionMin: feeEls.min.value !== '' && min >= 0 ? min : FEE_DEFAULTS.commissionMin,
+    };
+    saveSettings();
+    render();
+  });
 
   els.addSection.addEventListener('click', addSection);
   els.addTarget.addEventListener('change', () => {
