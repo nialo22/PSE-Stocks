@@ -559,6 +559,10 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 
 footer { max-width: 1520px; margin: 0 auto; padding: 8px 24px 32px; font-size: 12px; }
 .tip { margin: 8px 0 0; }
+.legal { max-width: 720px; line-height: 1.6; }
+.legal h1 { margin: 12px 0 0; font-size: 26px; }
+.legal h2 { margin: 28px 0 8px; font-size: 17px; }
+.legal ul { padding-left: 20px; }
 
 /* Announcement pop-up: bottom corner, closes itself after 10 seconds. */
 .announcement {

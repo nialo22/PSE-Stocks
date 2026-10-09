@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy · PSE Stocks Watchlist by Nialo</title>
+  <script>
+    try {
+      const theme = localStorage.getItem('pse-stocks:theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch {}
+  </script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="legal">
+    <p><a href="./">← Back to PSE Stocks Watchlist</a></p>
+    <h1>Privacy Policy</h1>
+    <p class="muted">Last updated: October 9, 2026</p>
+
+    <p>PSE Stocks Watchlist by Nialo is a free website for following Philippine Stock Exchange prices.
+      It has no accounts, no sign-up, no ads and no cookies, and we don't sell or share your information.
+      This page explains exactly what the site handles.</p>
+
+    <h2>Stored only on your device</h2>
+    <p>The site saves these in your browser's local storage so they're there when you come back:</p>
+    <ul>
+      <li>your watchlist, its sections and their order;</li>
+      <li>portfolio positions you enter (number of shares and average cost) and your fee settings;</li>
+      <li>display settings: refresh interval, sorting, Prices/Portfolio view, light/dark mode and whether the Index Summary is expanded.</li>
+    </ul>
+    <p>Your portfolio positions never leave your device. To delete this data, remove the items in the app,
+      or clear this site's data in your browser settings.</p>
+
+    <h2>Sent to our server</h2>
+    <p>To show prices, your browser asks our server for data, and our server fetches it from
+      <a href="https://edge.pse.com.ph/" target="_blank" rel="noopener">PSE Edge</a>. These requests include
+      the stock symbols on your watchlist and anything you type in the search box. We don't store them;
+      the server only keeps market data briefly in memory, and error logs may note which stock symbol
+      failed to load.</p>
+    <p>Like any website, our hosting provider (Vercel) receives standard request information such as your
+      IP address, browser type and the time of the request, which it handles under its own privacy policy.
+      Your browser does not contact PSE Edge directly unless you click a link to it.</p>
+
+    <h2>Visitor statistics</h2>
+    <p>We use <a href="https://vercel.com/docs/analytics/privacy-policy" target="_blank" rel="noopener">Vercel Web Analytics</a>
+      to count page views. It records the page visited, the referring site, approximate location (such as country),
+      and device, browser and operating system type. It uses no cookies: visitors are recognised only by a hash
+      of the request that is discarded after 24 hours, and we see only totals, never individual visitors.</p>
+
+    <h2>Your rights</h2>
+    <p>We don't collect your name, email or other personal details. If you have a question or request about
+      your data, including under the Philippine Data Privacy Act of 2012, contact the site owner, Nialo.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes, we'll update this page and the date at the top.</p>
+  </main>
+</body>
+</html>
