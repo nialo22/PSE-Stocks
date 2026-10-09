@@ -100,6 +100,24 @@ code { font-size: 0.95em; }
   cursor: pointer;
 }
 .theme-toggle:hover { color: var(--text); background: var(--hover); }
+.header-actions { display: inline-flex; align-items: center; gap: 10px; }
+.vtrade-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vtrade-btn:hover { background: var(--hover); }
+.vtrade-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .theme-toggle .icon-sun { display: none; }
 .theme-toggle.is-dark .icon-sun { display: block; }
@@ -664,6 +682,7 @@ footer { max-width: 1520px; margin: 0 auto; padding: 8px 24px 32px; font-size: 1
   .topbar, main, footer { padding-left: 16px; padding-right: 16px; }
   .banner { padding: 10px 16px; }
   #clock { display: none; }
+  .status { flex-wrap: wrap; row-gap: 8px; }
   .browse { flex-basis: 100%; }
   .schedule-title .muted { display: none; }
   .phase { padding: 2px 7px; }
