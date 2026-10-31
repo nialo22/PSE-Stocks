@@ -434,25 +434,29 @@
   // Signals use daily closes, so they are fetched once and kept for 30 minutes.
   const SIGNALS_TTL_MS = 30 * 60 * 1000;
 
-  function loadMissingSignals() {
+  // Each stock needs about a year of prices, so ask for a few at a time and
+  // let rows fill in as they arrive instead of one long request.
+  const SIGNALS_BATCH = 5;
+
+  async function loadMissingSignals() {
     if (state.settings.view !== 'signals') return;
     if (Date.now() - state.signalsAt > SIGNALS_TTL_MS) state.signals.clear();
     const missing = allItems().map((i) => i.symbol).filter((s) => !state.signals.has(s));
-    if (!missing.length) return;
     for (const s of missing) state.signals.set(s, null);
-    api(`/api/signals?symbols=${encodeURIComponent(missing.join(','))}`)
-      .then((data) => {
+    for (let i = 0; i < missing.length; i += SIGNALS_BATCH) {
+      const batch = missing.slice(i, i + SIGNALS_BATCH);
+      try {
+        const data = await api(`/api/signals?symbols=${encodeURIComponent(batch.join(','))}`);
         state.trackRecord = data.trackRecord;
         state.signalsAt ||= Date.now();
         for (const sig of data.signals) state.signals.set(sig.symbol, sig);
-      })
-      .catch((err) => {
-        for (const s of missing) state.signals.set(s, { symbol: s, error: err.message, code: err.code });
-      })
-      .finally(() => {
-        if (!state.signals.size || [...state.signals.values()].every((v) => v?.error)) state.signalsAt = 0;
-        render();
-      });
+      } catch (err) {
+        for (const s of batch) state.signals.set(s, { symbol: s, error: err.message, code: err.code });
+      }
+      render();
+    }
+    // Nothing loaded: try again on the next refresh rather than in 30 minutes.
+    if ([...state.signals.values()].every((v) => v?.error)) state.signalsAt = 0;
   }
 
   function schedule() {
