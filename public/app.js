@@ -1579,7 +1579,7 @@
       <div class="sd-chart ${dir}${animate ? ' animate' : ''}" data-points="${escapeHtml(JSON.stringify(rows.map((r) => [fmtEdgeDate(r.date, true), r.close])))}">
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
           <path class="spark-area" d="M0,${H}L${pts.join('L')}L${W},${H}Z"/>
-          <path class="spark-line" pathLength="1" vector-effect="non-scaling-stroke" d="M${pts.join('L')}"/>
+          <path class="spark-line" vector-effect="non-scaling-stroke" d="M${pts.join('L')}"/>
         </svg>
         <span class="sd-axis sd-max">${fmtPrice(max)}</span>
         <span class="sd-axis sd-min">${fmtPrice(min)}</span>
