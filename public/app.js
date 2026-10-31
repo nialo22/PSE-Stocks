@@ -110,6 +110,8 @@
     renderPending: false,
     timer: null,
     loading: false,
+    introPlayed: false,
+    introTimer: null,
   };
 
   const saveSections = () => save(SECTIONS_KEY, state.sections);
@@ -238,7 +240,11 @@
       timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit',
     }) + ' Manila';
     for (const li of els.schedule.children) {
-      li.classList.toggle('current', Number(li.dataset.index) === index);
+      const current = Number(li.dataset.index) === index;
+      if (current && !li.classList.contains('current')) {
+        els.schedule.scrollLeft = li.offsetLeft - els.schedule.offsetLeft - 16;
+      }
+      li.classList.toggle('current', current);
     }
   }
 
@@ -316,6 +322,10 @@
       state.loading = false;
       els.refresh.disabled = false;
       render();
+      if (!state.introPlayed && state.quotes.size) {
+        state.introPlayed = true;
+        playIntro();
+      }
       loadMissingHistory();
       loadMissingSignals();
     }
@@ -425,7 +435,10 @@
         .then((rows) => {
           state.history.set(symbol, rows.map((r) => r.close));
           const cell = els.table.querySelector(`tr[data-symbol="${CSS.escape(symbol)}"] .spark-cell`);
-          if (cell) cell.innerHTML = sparkline(state.history.get(symbol));
+          if (cell) {
+            cell.innerHTML = sparkline(state.history.get(symbol));
+            cell.classList.add('draw');
+          }
         })
         .catch(() => state.history.set(symbol, []));
     }
@@ -454,6 +467,7 @@
         for (const s of batch) state.signals.set(s, { symbol: s, error: err.message, code: err.code });
       }
       render();
+      for (const s of batch) els.table.querySelector(`tr[data-symbol="${CSS.escape(s)}"]`)?.classList.add('fresh');
     }
     // Nothing loaded: try again on the next refresh rather than in 30 minutes.
     if ([...state.signals.values()].every((v) => v?.error)) state.signalsAt = 0;
@@ -479,6 +493,8 @@
   const TRASH_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
   const CARET_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  const LOADING = '<span class="visually-hidden">Loading…</span>';
+
   function sparkline(values) {
     if (!values || values.length < 2) return '';
     const w = 96;
@@ -488,7 +504,7 @@
     const span = max - min || 1;
     const pts = values.map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - min) / span) * (h - 4)).toFixed(1)}`);
     const color = values[values.length - 1] >= values[0] ? 'var(--up)' : 'var(--down)';
-    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="M${pts.join('L')}" stroke="${color}"/></svg>`;
+    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path pathLength="1" d="M${pts.join('L')}" stroke="${color}"/></svg>`;
   }
 
   // ---------------------------------------------------------------------
@@ -598,7 +614,7 @@
     const placeholderRow = (content, cls = '') => `<tr class="${cls}" data-symbol="${sym}">${handle}${symCell}
       <td class="placeholder">${content}</td><td class="hide-sm"></td><td></td><td class="hide-sm"></td><td class="hide-sm"></td>
       <td class="hide-sm"></td><td class="hide-md"></td><td class="hide-sm"></td><td class="hide-md"></td>${remove}</tr>`;
-    if (!q) return placeholderRow('<span class="muted">Loading…</span>');
+    if (!q) return placeholderRow(LOADING, 'loading');
     if (q.error) {
       const text = q.code === PSE_EDGE_DOWN ? 'Price unavailable' : q.error;
       return placeholderRow(`<span class="err">${escapeHtml(text)}</span>`, 'row-error');
@@ -650,6 +666,7 @@
       return placeholderRow(`<button class="link-btn" type="button" data-edit-position="${sym}">+ Add position</button>`, 'no-position');
     }
     if (p.value == null) {
+      if (!q) return placeholderRow(LOADING, 'loading');
       const text = !q ? 'Loading…' : q.code === PSE_EDGE_DOWN ? 'Price unavailable' : (q.error || 'Price unavailable');
       return placeholderRow(`<span class="${q?.error ? 'err' : 'muted'}">${escapeHtml(text)}</span>`);
     }
@@ -692,7 +709,7 @@
     // One cell per column (no colspan), as in the other views.
     const placeholderRow = (content, cls = '') => `<tr class="${cls}" data-symbol="${sym}">${handle}${symCell}${last}
       <td class="placeholder">${content}</td><td class="hide-sm"></td><td></td>${remove}</tr>`;
-    if (!sig) return placeholderRow('<span class="muted">Loading…</span>');
+    if (!sig) return placeholderRow(LOADING, 'loading');
     if (sig.error) {
       const text = sig.code === PSE_EDGE_DOWN ? 'Signals unavailable' : sig.error;
       return placeholderRow(`<span class="err">${escapeHtml(text)}</span>`, 'row-error');
@@ -714,6 +731,29 @@
       ${remove}
     </tr>`;
   }
+
+  // Rows rise in one after another (the table re-renders on every refresh, so
+  // this runs only when prices first arrive and when the view changes).
+  function playIntro() {
+    els.table.querySelectorAll('tbody tr').forEach((tr, i) => tr.style.setProperty('--i', Math.min(i, 20)));
+    els.table.classList.remove('intro');
+    void els.table.offsetWidth; // restart the animation
+    els.table.classList.add('intro');
+    clearTimeout(state.introTimer);
+    state.introTimer = setTimeout(() => els.table.classList.remove('intro'), 1300);
+  }
+
+  /** Slides the highlight behind the selected view tab. */
+  function moveTabIndicator() {
+    const tab = [...els.viewTabs].find((t) => t.getAttribute('aria-selected') === 'true');
+    if (!tab) return;
+    const bar = tab.parentElement;
+    bar.style.setProperty('--tab-x', `${tab.offsetLeft}px`);
+    bar.style.setProperty('--tab-w', `${tab.offsetWidth}px`);
+    // No slide in from the left edge on page load.
+    if (!bar.classList.contains('ready')) requestAnimationFrame(() => bar.classList.add('ready'));
+  }
+  window.addEventListener('resize', moveTabIndicator);
 
   function renderSignalsLegend() {
     const show = state.settings.view === 'signals';
@@ -774,6 +814,7 @@
     els.pfSummary.hidden = !show;
     els.feeSettings.hidden = !show;
     for (const tab of els.viewTabs) tab.setAttribute('aria-selected', String(tab.dataset.view === state.settings.view));
+    moveTabIndicator();
     els.table.classList.toggle('portfolio', show);
     if (!show) {
       els.pfEmpty.hidden = true;
@@ -1027,6 +1068,7 @@
     if (!keys.includes(state.settings.sort)) state.settings.sort = null;
     saveSettings();
     render();
+    playIntro();
     loadMissingSignals();
   }
 
@@ -1485,8 +1527,7 @@
     themeToggle.setAttribute('aria-label', label);
   }
 
-  themeToggle.addEventListener('click', () => {
-    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  function setTheme(next) {
     document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem(THEME_KEY, next);
@@ -1494,6 +1535,24 @@
       /* storage unavailable: the choice lasts for this visit only */
     }
     renderThemeToggle();
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTheme(next);
+      return;
+    }
+    const box = themeToggle.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(() => setTheme(next)).ready.then(() => {
+      document.documentElement.animate(
+        { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: 550, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' },
+      );
+    });
   });
 
   systemDark.addEventListener('change', renderThemeToggle);
