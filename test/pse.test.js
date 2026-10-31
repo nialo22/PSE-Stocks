@@ -4,12 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, parseIndexSummary, createClient, PSE_EDGE_DOWN_MESSAGE } = require('../lib/pse');
+const { parseStockData, parseSearchResults, parseHistory, parseDirectoryPage, parseIndexSummary, parseDisclosures, parseDividends, createClient, PSE_EDGE_DOWN_MESSAGE } = require('../lib/pse');
 const { createService, TtlCache } = require('../lib/service');
 
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'stockData.html'), 'utf8');
 const directoryFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'companyDirectory.html'), 'utf8');
 const indexFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'indexSummary.html'), 'utf8');
+const disclosuresFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'disclosures.html'), 'utf8');
+const dividendsFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'dividends.html'), 'utf8');
 
 test('parseStockData extracts the quote fields', () => {
   const q = parseStockData(fixture);
@@ -265,4 +267,42 @@ test('fetchIndexSummary requests /index/form.do', async () => {
   const summary = await client.fetchIndexSummary();
   assert.equal(calls[0], 'https://edge.pse.com.ph/index/form.do');
   assert.equal(summary.indices.length, 8);
+});
+
+test('parseDisclosures reads title, date, form number and viewer id, newest first', () => {
+  const list = parseDisclosures(disclosuresFixture);
+  assert.equal(list.length, 50);
+  assert.deepEqual(list[0], {
+    title: 'Change in Number of Issued and/or Outstanding Shares',
+    date: 'Oct 30, 2026 03:23 PM',
+    form: '4-11',
+    edgeNo: 'b8fafaca673a1f1364d70b69f0a3140b',
+  });
+});
+
+test('parseDividends reads rate and the ex-dividend, record and payment dates', () => {
+  const list = parseDividends(dividendsFixture);
+  assert.equal(list.length, 4);
+  assert.deepEqual(list[0], {
+    security: 'COMMON',
+    type: 'Cash',
+    rate: 'Php 1.10 per share',
+    exDate: 'Sep 11, 2026',
+    recordDate: 'Sep 14, 2026',
+    paymentDate: 'Sep 25, 2026',
+    edgeNo: 'fd6c0697952b718564d70b69f0a3140b',
+  });
+  assert.deepEqual(parseDividends('<p>No records</p>'), []);
+});
+
+test('company() keeps the dividends of the share asked for', async () => {
+  const div = (security, rate) => ({ security, type: 'Cash', rate, exDate: 'Sep 1, 2026', recordDate: '', paymentDate: '', edgeNo: null });
+  const client = {
+    searchCompanies: async (term) => [{ cmpyId: '86', symbol: term.toUpperCase(), name: 'Jollibee Foods Corporation' }],
+    fetchDisclosures: async () => [],
+    fetchDividends: async () => [div('JFCPB', 'Php 10.60'), div('COMMON', 'Php 1.33'), div('JFCPC', 'Php 9.00')],
+  };
+  const service = createService(client);
+  assert.deepEqual((await service.company('JFC')).dividends.map((d) => d.rate), ['Php 1.33']);
+  assert.deepEqual((await service.company('JFCPB')).dividends.map((d) => d.rate), ['Php 10.60']);
 });

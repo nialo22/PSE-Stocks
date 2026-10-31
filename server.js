@@ -85,6 +85,12 @@ async function handleApi(url, res) {
       return sendJson(res, 200, await service.history(symbol, days));
     }
 
+    case '/api/company': {
+      const symbol = url.searchParams.get('symbol') || '';
+      if (!symbol) return sendJson(res, 400, { error: 'symbol is required' });
+      return sendJson(res, 200, await service.company(symbol));
+    }
+
     case '/api/signals': {
       const symbols = (url.searchParams.get('symbols') || '').split(',').filter((s) => s.trim());
       if (symbols.length > MAX_SYMBOLS) {

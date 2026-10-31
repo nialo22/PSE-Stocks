@@ -322,6 +322,7 @@
       state.loading = false;
       els.refresh.disabled = false;
       render();
+      if (detail.symbol) renderDetail();
       if (!state.introPlayed && state.quotes.size) {
         state.introPlayed = true;
         playIntro();
@@ -597,6 +598,10 @@
     });
   }
 
+  /** The symbol cell: a button that opens the stock detail view. */
+  const symCellHtml = (sym, inner) =>
+    `<td class="sym-cell"><button class="sym-link" type="button" data-detail="${sym}" title="Details for ${sym}">${inner}</button></td>`;
+
   function pseLink(q) {
     return q?.cmpyId ? `https://edge.pse.com.ph/companyPage/stockData.do?cmpy_id=${encodeURIComponent(q.cmpyId)}` : null;
   }
@@ -605,10 +610,9 @@
     const sym = escapeHtml(item.symbol);
     const q = state.quotes.get(item.symbol);
     const name = item.name || q?.name || '';
-    const link = pseLink(q);
     const symHtml = `<span class="sym">${sym}</span><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
     const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
-    const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
+    const symCell = symCellHtml(sym, symHtml);
     const remove = `<td><button class="remove" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button></td>`;
 
     // One cell per column (no colspan): spanning columns that are hidden on
@@ -648,13 +652,12 @@
     const sym = escapeHtml(item.symbol);
     const q = state.quotes.get(item.symbol);
     const p = positionOf(item);
-    const link = pseLink(q);
     const subLine = p
       ? `<span class="name position-line">${fmtShares(p.shares)} sh @ ${fmtPrice(p.avgCost)}</span>`
       : `<span class="name">${escapeHtml(item.name || q?.name || '')}</span>`;
     const symHtml = `<span class="sym">${sym}</span>${subLine}`;
     const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
-    const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
+    const symCell = symCellHtml(sym, symHtml);
     const actions = `<td class="row-actions">
       ${p ? `<button class="icon-btn" type="button" data-edit-position="${sym}" title="Edit position" aria-label="Edit ${sym} position">${PENCIL_ICON}</button>` : ''}
       <button class="remove hide-sm" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button>
@@ -694,17 +697,16 @@
     rsiOverbought: { short: 'Overbought', cls: 'down', long: 'RSI (14) rose above 70' },
   };
   // PSE Edge dates look like "Oct 29, 2026 00:00:00".
-  const fmtSignalDate = (date, withYear) => String(date).replace(/ \d\d:\d\d:\d\d$/, '').replace(withYear ? /$/ : /, \d{4}$/, '');
+  const fmtEdgeDate = (date, withYear) => String(date).replace(/ \d\d:\d\d:\d\d$/, '').replace(withYear ? /$/ : /, \d{4}$/, '');
 
   function signalRowHtml(item) {
     const sym = escapeHtml(item.symbol);
     const q = state.quotes.get(item.symbol);
     const sig = state.signals.get(item.symbol);
     const name = item.name || q?.name || '';
-    const link = pseLink(q);
     const symHtml = `<span class="sym">${sym}</span><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
     const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
-    const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
+    const symCell = symCellHtml(sym, symHtml);
     const remove = `<td><button class="remove" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button></td>`;
     const last = `<td class="num last hide-sm">${fmtPrice(q?.last)}</td>`;
 
@@ -720,7 +722,7 @@
     const badges = sig.active.length
       ? sig.active.map(({ name: key, date }) => {
         const info = SIGNAL_INFO[key];
-        return `<span class="signal-badge ${info.cls}" title="${escapeHtml(`${info.short}: ${info.long} on ${fmtSignalDate(date, true)}`)}">${info.short} <span class="signal-date">${escapeHtml(fmtSignalDate(date))}</span></span>`;
+        return `<span class="signal-badge ${info.cls}" title="${escapeHtml(`${info.short}: ${info.long} on ${fmtEdgeDate(date, true)}`)}">${info.short} <span class="signal-date">${escapeHtml(fmtEdgeDate(date))}</span></span>`;
       }).join(' ')
       : '<span class="muted">None</span>';
     return `<tr data-symbol="${sym}">
@@ -998,6 +1000,8 @@
     const t = e.target;
     const edit = t.closest('[data-edit-position]');
     if (edit) return openPositionDialog(edit.dataset.editPosition);
+    const detailBtn = t.closest('[data-detail]');
+    if (detailBtn) return openDetail(detailBtn.dataset.detail);
     const remove = t.closest('[data-remove]');
     if (remove) return removeFromWatchlist(remove.dataset.remove);
     const toggle = t.closest('[data-toggle]');
@@ -1510,6 +1514,224 @@
   });
 
   els.refresh.addEventListener('click', refresh);
+
+  // ---------------------------------------------------------------------
+  // Stock detail: chart, 52-week range, key stats, signals, dividends and
+  // the company's latest PSE Edge announcements.
+  // ---------------------------------------------------------------------
+
+  const RANGES = [['1M', 30], ['3M', 90], ['1Y', 365]];
+  const detailDialog = $('#stock-dialog');
+  const detailBody = $('#stock-body');
+  // drawnKey: the chart already on screen, so re-renders don't replay its draw-in.
+  const detail = { symbol: null, days: 90, history: new Map(), company: new Map(), drawnKey: null };
+  const viewerLink = (edgeNo) => `https://edge.pse.com.ph/openDiscViewer.do?edge_no=${encodeURIComponent(edgeNo)}`;
+  const skeleton = (h) => `<div class="sd-skeleton" style="height:${h}px"></div>`;
+
+  function openDetail(symbol) {
+    detail.symbol = symbol;
+    renderDetail();
+    if (!detailDialog.open) detailDialog.showModal();
+    detailBody.scrollTop = 0;
+    loadDetail();
+  }
+
+  /** Fetches whatever the open stock is missing; each part renders as it arrives. */
+  function loadDetail() {
+    const sym = detail.symbol;
+    const histKey = `${sym}:${detail.days}`;
+    const settle = (map, key, promise) => {
+      if (map.has(key)) return;
+      map.set(key, null);
+      promise.then((v) => map.set(key, v), (err) => map.set(key, { error: err }))
+        .finally(() => { if (detail.symbol === sym) renderDetail(); });
+    };
+    settle(detail.history, histKey, api(`/api/history?symbol=${encodeURIComponent(sym)}&days=${detail.days}`));
+    settle(detail.company, sym, api(`/api/company?symbol=${encodeURIComponent(sym)}`));
+    settle(state.signals, sym, api(`/api/signals?symbols=${encodeURIComponent(sym)}`).then((d) => {
+      state.trackRecord = d.trackRecord;
+      return d.signals[0];
+    }));
+  }
+
+  function chartHtml(rows, animate) {
+    const ranges = `<div class="sd-ranges" role="group" aria-label="Chart range">
+      ${RANGES.map(([label, days]) => `<button type="button" class="sd-range-btn" data-days="${days}" aria-pressed="${days === detail.days}">${label}</button>`).join('')}
+    </div>`;
+    if (!rows) return `<div class="sd-chart-head"><span></span>${ranges}</div>${skeleton(180)}`;
+    if (rows.error || rows.length < 2) return `<div class="sd-chart-head"><span></span>${ranges}</div><p class="muted sd-empty">Chart unavailable right now.</p>`;
+    const W = 600;
+    const H = 180;
+    const closes = rows.map((r) => r.close);
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const span = max - min || 1;
+    const y = (v) => (H - 8 - ((v - min) / span) * (H - 16)).toFixed(1);
+    const pts = closes.map((v, i) => `${((i / (closes.length - 1)) * W).toFixed(1)},${y(v)}`);
+    const change = closes.at(-1) / closes[0] - 1;
+    const dir = change >= 0 ? 'up' : 'down';
+    const label = RANGES.find(([, d]) => d === detail.days)[0];
+    return `
+      <div class="sd-chart-head">
+        <p class="sd-perf ${dir}"><strong>${fmtPct(change * 100)}</strong> <span class="muted">over ${label === '1Y' ? '1 year' : label === '3M' ? '3 months' : '1 month'}</span></p>
+        ${ranges}
+      </div>
+      <div class="sd-chart ${dir}${animate ? ' animate' : ''}" data-points="${escapeHtml(JSON.stringify(rows.map((r) => [fmtEdgeDate(r.date, true), r.close])))}">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <path class="spark-area" d="M0,${H}L${pts.join('L')}L${W},${H}Z"/>
+          <path class="spark-line" pathLength="1" vector-effect="non-scaling-stroke" d="M${pts.join('L')}"/>
+        </svg>
+        <span class="sd-axis sd-max">${fmtPrice(max)}</span>
+        <span class="sd-axis sd-min">${fmtPrice(min)}</span>
+        <span class="sd-dot" hidden></span>
+        <span class="sd-tip" hidden></span>
+      </div>
+      <div class="sd-dates muted"><span>${escapeHtml(fmtEdgeDate(rows[0].date, true))}</span><span>${escapeHtml(fmtEdgeDate(rows.at(-1).date, true))}</span></div>`;
+  }
+
+  function rangeBarHtml(q) {
+    if (q?.weekLow52 == null || q.weekHigh52 == null || q.last == null) return '';
+    const pos = Math.min(100, Math.max(0, ((q.last - q.weekLow52) / (q.weekHigh52 - q.weekLow52 || 1)) * 100));
+    return `<section class="sd-card">
+      <h3>52-week range</h3>
+      <div class="sd-range"><span class="sd-range-marker" style="left:${pos.toFixed(1)}%" title="Last ${fmtPrice(q.last)}"></span></div>
+      <div class="sd-range-labels"><span>${fmtPrice(q.weekLow52)}<small>Low</small></span><span>${fmtPrice(q.weekHigh52)}<small>High</small></span></div>
+    </section>`;
+  }
+
+  function statsHtml(q) {
+    if (!q || q.error) return '';
+    const stat = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+    return `<section class="sd-card"><h3>Today</h3><dl class="sd-stats">
+      ${stat('Open', fmtPrice(q.open))}${stat('High', fmtPrice(q.high))}${stat('Low', fmtPrice(q.low))}
+      ${stat('Prev close', fmtPrice(q.prevClose))}${stat('Volume', fmtVolume(q.volume))}${stat('Value', q.value == null ? '–' : `₱${fmtVolume(q.value)}`)}
+      ${stat('P/E ratio', q.peRatio == null ? '–' : q.peRatio.toFixed(2))}${stat('Market cap', q.marketCap == null ? '–' : `₱${fmtVolume(q.marketCap)}`)}
+    </dl></section>`;
+  }
+
+  function signalsCardHtml(sig) {
+    const body = !sig ? skeleton(40)
+      : sig.error ? '<p class="muted">Signals unavailable right now.</p>'
+        : `<p>RSI (14): <strong class="${sig.rsi < 30 ? 'up' : sig.rsi > 70 ? 'down' : ''}">${sig.rsi == null ? '–' : sig.rsi.toFixed(0)}</strong>
+          · ${fmtPct(sig.fromHigh * 100)} from its 52-week closing high</p>
+          <p>${sig.active.length
+            ? sig.active.map(({ name, date }) => `<span class="signal-badge ${SIGNAL_INFO[name].cls}">${SIGNAL_INFO[name].short} <span class="signal-date">${escapeHtml(fmtEdgeDate(date))}</span></span>`).join(' ')
+            : '<span class="muted">No signal in the last 10 trading days.</span>'}</p>`;
+    return `<section class="sd-card"><h3>Signals</h3>${body}<p class="muted sd-note">See the Signals tab for what each signal has meant. Not investment advice.</p></section>`;
+  }
+
+  function dividendsHtml(company) {
+    let body;
+    if (!company) body = skeleton(60);
+    else if (company.error) body = '<p class="muted">Dividends unavailable right now.</p>';
+    else if (!company.dividends.length) body = '<p class="muted">No dividends on record.</p>';
+    else {
+      const today = new Date().setHours(0, 0, 0, 0);
+      body = `<ul class="sd-list">${company.dividends.map((d) => {
+        const upcoming = Date.parse(d.exDate) >= today;
+        const rate = d.rate.replace(/^Php\s*/i, '₱');
+        return `<li>
+          <div><strong>${escapeHtml(rate)}</strong> ${d.type && d.type !== 'Cash' ? escapeHtml(d.type.toLowerCase()) : ''}
+            ${d.security && d.security !== 'COMMON' ? `<span class="muted">(${escapeHtml(d.security.toLowerCase())})</span>` : ''}
+            ${upcoming ? '<span class="signal-badge up">Upcoming</span>' : ''}</div>
+          <div class="muted">Ex-date ${escapeHtml(d.exDate)} · Paid ${escapeHtml(d.paymentDate)}</div>
+        </li>`;
+      }).join('')}</ul>`;
+    }
+    return `<section class="sd-card"><h3>Dividends</h3>${body}</section>`;
+  }
+
+  function announcementsHtml(company) {
+    let body;
+    if (!company) body = skeleton(120);
+    else if (company.error) body = '<p class="muted">Announcements unavailable right now.</p>';
+    else if (!company.disclosures.length) body = '<p class="muted">No announcements found.</p>';
+    else {
+      body = `<ul class="sd-list">${company.disclosures.map((d) => `<li>
+        ${d.edgeNo ? `<a href="${viewerLink(d.edgeNo)}" target="_blank" rel="noopener">${escapeHtml(d.title)}</a>` : escapeHtml(d.title)}
+        <div class="muted">${escapeHtml(d.date)}</div>
+      </li>`).join('')}</ul>`;
+    }
+    return `<section class="sd-card sd-wide"><h3>Latest announcements</h3>${body}</section>`;
+  }
+
+  function renderDetail() {
+    const sym = detail.symbol;
+    if (!sym) return;
+    const q = state.quotes.get(sym);
+    const item = allItems().find((i) => i.symbol === sym);
+    $('#stock-title').textContent = sym;
+    $('#stock-name').textContent = item?.name || q?.name || '';
+    const hasPrice = q && !q.error && q.last != null;
+    const price = hasPrice
+      ? `<div class="sd-price"><span class="sd-last">${fmtPrice(q.last)}</span>
+          <span class="${dirClass(q.change)}"><span class="chg-badge">${fmtSigned(q.changePercent, '%', (n) => n.toFixed(2))}</span></span>
+          <span class="muted">${fmtSigned(q.change, '', (n) => fmtPrice(n, q.last))} today${q.asOf ? ` · as of ${escapeHtml(q.asOf)}` : ''}</span></div>`
+      : '';
+    const link = pseLink(q);
+    const chartKey = `${sym}:${detail.days}`;
+    const rows = detail.history.get(chartKey);
+    const animate = Array.isArray(rows) && detail.drawnKey !== chartKey;
+    if (Array.isArray(rows)) detail.drawnKey = chartKey;
+    detailBody.innerHTML = `
+      ${price}
+      <section class="sd-card sd-wide">
+        ${chartHtml(rows, animate)}
+      </section>
+      <div class="sd-grid">
+        ${rangeBarHtml(q)}
+        ${statsHtml(q)}
+        ${signalsCardHtml(state.signals.get(sym))}
+        ${dividendsHtml(detail.company.get(sym))}
+        ${announcementsHtml(detail.company.get(sym))}
+      </div>
+      ${link ? `<p class="sd-footer"><a href="${link}" target="_blank" rel="noopener">Open ${escapeHtml(sym)} on PSE Edge ↗</a></p>` : ''}`;
+  }
+
+  detailBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-days]');
+    if (!btn) return;
+    detail.days = Number(btn.dataset.days);
+    renderDetail();
+    loadDetail();
+  });
+
+  // Chart hover: a dot and a date/price label follow the pointer.
+  detailBody.addEventListener('pointermove', (e) => {
+    const chart = e.target.closest('.sd-chart');
+    if (!chart) return;
+    const points = JSON.parse(chart.dataset.points);
+    const box = chart.getBoundingClientRect();
+    const i = Math.round(Math.min(1, Math.max(0, (e.clientX - box.left) / box.width)) * (points.length - 1));
+    const [date, close] = points[i];
+    const closes = points.map((p) => p[1]);
+    const min = Math.min(...closes);
+    const span = Math.max(...closes) - min || 1;
+    const x = (i / (points.length - 1)) * 100;
+    const yPct = (1 - (8 + ((close - min) / span) * (180 - 16)) / 180) * 100;
+    const dot = chart.querySelector('.sd-dot');
+    const tip = chart.querySelector('.sd-tip');
+    dot.hidden = tip.hidden = false;
+    dot.style.left = tip.style.left = `${x}%`;
+    dot.style.top = `${yPct}%`;
+    // Above the point, or below it when the point is near the top.
+    tip.style.top = yPct < 25 ? `calc(${yPct}% + 12px)` : `calc(${yPct}% - 36px)`;
+    tip.style.transform = `translateX(${x > 70 ? '-100%' : x < 30 ? '0' : '-50%'})`;
+    tip.innerHTML = `<strong>${fmtPrice(close)}</strong> ${escapeHtml(date)}`;
+  });
+  // pointerleave doesn't bubble, so listen in the capture phase and act only for the chart.
+  detailBody.addEventListener('pointerleave', (e) => {
+    if (!e.target.classList?.contains('sd-chart')) return;
+    e.target.querySelectorAll('.sd-dot, .sd-tip').forEach((el) => { el.hidden = true; });
+  }, true);
+
+  $('#stock-close').addEventListener('click', () => detailDialog.close());
+  // A click on the dimmed backdrop (outside the panel) closes it.
+  detailDialog.addEventListener('click', (e) => { if (e.target === detailDialog) detailDialog.close(); });
+  detailDialog.addEventListener('close', () => {
+    detail.symbol = null;
+    detail.drawnKey = null;
+  });
 
   // Light/dark theme. With no saved choice the page follows the system
   // setting; the inline script in index.html applies a saved choice early.

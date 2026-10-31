@@ -61,6 +61,12 @@ async function handle(url) {
       return json(200, await getService().history(symbol, days));
     }
 
+    case '/api/company': {
+      const symbol = url.searchParams.get('symbol') || '';
+      if (!symbol) return json(400, { error: 'symbol is required' });
+      return json(200, await getService().company(symbol));
+    }
+
     case '/api/signals': {
       const symbols = (url.searchParams.get('symbols') || '').split(',').filter((s) => s.trim());
       if (symbols.length > MAX_SYMBOLS) {
