@@ -503,8 +503,10 @@
     const max = Math.max(...values);
     const span = max - min || 1;
     const pts = values.map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - min) / span) * (h - 4)).toFixed(1)}`);
-    const color = values[values.length - 1] >= values[0] ? 'var(--up)' : 'var(--down)';
-    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path pathLength="1" d="M${pts.join('L')}" stroke="${color}"/></svg>`;
+    const dir = values[values.length - 1] >= values[0] ? 'up' : 'down';
+    return `<svg class="spark ${dir}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
+      + `<path class="spark-area" d="M0,${h}L${pts.join('L')}L${w},${h}Z"/>`
+      + `<path class="spark-line" pathLength="1" d="M${pts.join('L')}"/></svg>`;
   }
 
   // ---------------------------------------------------------------------
