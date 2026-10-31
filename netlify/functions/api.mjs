@@ -4,10 +4,12 @@
 import pse from '../../lib/pse.js';
 import demo from '../../lib/demo.js';
 import serviceLib from '../../lib/service.js';
+import signalsLib from '../../lib/signals.js';
 
 const { createClient } = pse;
 const { createDemoClient } = demo;
 const { createService } = serviceLib;
+const { TRACK_RECORD } = signalsLib;
 
 const MAX_SYMBOLS = 60;
 
@@ -57,6 +59,14 @@ async function handle(url) {
       const days = Math.min(365, Math.max(5, Number(url.searchParams.get('days')) || 30));
       if (!symbol) return json(400, { error: 'symbol is required' });
       return json(200, await getService().history(symbol, days));
+    }
+
+    case '/api/signals': {
+      const symbols = (url.searchParams.get('symbols') || '').split(',').filter((s) => s.trim());
+      if (symbols.length > MAX_SYMBOLS) {
+        return json(400, { error: `At most ${MAX_SYMBOLS} symbols per request` });
+      }
+      return json(200, { trackRecord: TRACK_RECORD, signals: await getService().signals(symbols) });
     }
 
     default:

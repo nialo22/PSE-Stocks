@@ -12,6 +12,7 @@ const path = require('node:path');
 const { createClient } = require('./lib/pse');
 const { createDemoClient } = require('./lib/demo');
 const { createService } = require('./lib/service');
+const { TRACK_RECORD } = require('./lib/signals');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -82,6 +83,14 @@ async function handleApi(url, res) {
       const days = Math.min(365, Math.max(5, Number(url.searchParams.get('days')) || 30));
       if (!symbol) return sendJson(res, 400, { error: 'symbol is required' });
       return sendJson(res, 200, await service.history(symbol, days));
+    }
+
+    case '/api/signals': {
+      const symbols = (url.searchParams.get('symbols') || '').split(',').filter((s) => s.trim());
+      if (symbols.length > MAX_SYMBOLS) {
+        return sendJson(res, 400, { error: `At most ${MAX_SYMBOLS} symbols per request` });
+      }
+      return sendJson(res, 200, { trackRecord: TRACK_RECORD, signals: await service.signals(symbols) });
     }
 
     default:

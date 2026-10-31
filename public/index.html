@@ -137,6 +137,7 @@
       <div class="view-tabs" role="tablist" aria-label="Watchlist view">
         <button type="button" role="tab" class="view-tab" data-view="prices" aria-selected="true">Prices</button>
         <button type="button" role="tab" class="view-tab" data-view="portfolio" aria-selected="false">Portfolio</button>
+        <button type="button" role="tab" class="view-tab" data-view="signals" aria-selected="false">Signals</button>
       </div>
       <button id="fee-settings" type="button" class="btn btn-small" hidden>Fee settings</button>
     </div>
@@ -178,6 +179,13 @@
         <tbody></tbody>
       </table>
       <div id="drop-indicator" class="drop-indicator" hidden></div>
+    </section>
+
+    <section id="signals-legend" class="signals-legend" aria-label="What the signals have meant" hidden>
+      <h2>What these signals have meant</h2>
+      <p>Over the last 5 years, <span id="signals-horizon">60</span> trading days after each signal, PSEi stocks were:</p>
+      <ul id="signals-record"></ul>
+      <p class="muted">These show what happened before, not what will happen. Each signal was right only about half the time, the differences are small enough to be luck, and buying then selling costs about 0.7% in fees. Educational information only, not investment advice.</p>
     </section>
     </div>
   </main>

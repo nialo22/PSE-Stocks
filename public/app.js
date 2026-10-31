@@ -18,7 +18,8 @@
   const CLOSED_MARKET_INTERVAL_S = 300;
   // Columns in a stock row. Prices view: drag handle, symbol, 9 data columns,
   // remove. Portfolio view: drag handle, symbol, 5 data columns, actions.
-  const VIEW_COLUMNS = { prices: 12, portfolio: 8 };
+  // Signals view: drag handle, symbol, 4 data columns, remove.
+  const VIEW_COLUMNS = { prices: 12, portfolio: 8, signals: 7 };
   const columnCount = () => VIEW_COLUMNS[state.settings.view] || VIEW_COLUMNS.prices;
 
   // Philippine selling costs (since the July 2025 CMEPA tax cut). Broker
@@ -53,6 +54,7 @@
     feeSettings: $('#fee-settings'),
     pfSummary: $('#pf-summary'),
     pfEmpty: $('#pf-empty'),
+    signalsLegend: $('#signals-legend'),
   };
 
   // ---------------------------------------------------------------------
@@ -97,6 +99,9 @@
     })(),
     quotes: new Map(),
     history: new Map(),
+    signals: new Map(),
+    signalsAt: 0,
+    trackRecord: null,
     companies: null,
     companiesState: 'loading',
     browseKey: null,
@@ -312,6 +317,7 @@
       els.refresh.disabled = false;
       render();
       loadMissingHistory();
+      loadMissingSignals();
     }
   }
 
@@ -425,6 +431,30 @@
     }
   }
 
+  // Signals use daily closes, so they are fetched once and kept for 30 minutes.
+  const SIGNALS_TTL_MS = 30 * 60 * 1000;
+
+  function loadMissingSignals() {
+    if (state.settings.view !== 'signals') return;
+    if (Date.now() - state.signalsAt > SIGNALS_TTL_MS) state.signals.clear();
+    const missing = allItems().map((i) => i.symbol).filter((s) => !state.signals.has(s));
+    if (!missing.length) return;
+    for (const s of missing) state.signals.set(s, null);
+    api(`/api/signals?symbols=${encodeURIComponent(missing.join(','))}`)
+      .then((data) => {
+        state.trackRecord = data.trackRecord;
+        state.signalsAt ||= Date.now();
+        for (const sig of data.signals) state.signals.set(sig.symbol, sig);
+      })
+      .catch((err) => {
+        for (const s of missing) state.signals.set(s, { symbol: s, error: err.message, code: err.code });
+      })
+      .finally(() => {
+        if (!state.signals.size || [...state.signals.values()].every((v) => v?.error)) state.signalsAt = 0;
+        render();
+      });
+  }
+
   function schedule() {
     clearTimeout(state.timer);
     const chosen = Number(state.settings.interval);
@@ -523,6 +553,8 @@
       case 'pl': return p?.pl ?? null;
       case 'dayGain': return p?.dayGain ?? null;
       case 'weight': return p?.value != null && totalValue ? p.value / totalValue : null;
+      case 'rsi':
+      case 'fromHigh': return state.signals.get(item.symbol)?.[key] ?? null;
       default: return state.quotes.get(item.symbol)?.[key] ?? null;
     }
   }
@@ -632,6 +664,66 @@
     </tr>`;
   }
 
+  // Short names for the signals the backtest kept (see TRACK_RECORD in lib/signals.js).
+  const SIGNAL_INFO = {
+    rsiOversold: { short: 'Oversold', cls: 'up', long: 'RSI (14) fell below 30' },
+    breakout: { short: 'Breakout', cls: 'up', long: 'new 52-week closing high on 1.5× its usual traded value' },
+    rsiOverbought: { short: 'Overbought', cls: 'down', long: 'RSI (14) rose above 70' },
+  };
+  // PSE Edge dates look like "Oct 29, 2026 00:00:00".
+  const fmtSignalDate = (date, withYear) => String(date).replace(/ \d\d:\d\d:\d\d$/, '').replace(withYear ? /$/ : /, \d{4}$/, '');
+
+  function signalRowHtml(item) {
+    const sym = escapeHtml(item.symbol);
+    const q = state.quotes.get(item.symbol);
+    const sig = state.signals.get(item.symbol);
+    const name = item.name || q?.name || '';
+    const link = pseLink(q);
+    const symHtml = `<span class="sym">${sym}</span><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
+    const handle = `<td class="handle-cell"><button class="drag-handle" type="button" data-drag="item" data-symbol="${sym}" title="Drag to move ${sym}" aria-label="Move ${sym}. Drag, or use the up and down arrow keys.">${GRIP_ICON}</button></td>`;
+    const symCell = `<td class="sym-cell">${link ? `<a href="${link}" target="_blank" rel="noopener" title="Open on PSE Edge">${symHtml}</a>` : symHtml}</td>`;
+    const remove = `<td><button class="remove" type="button" data-remove="${sym}" title="Remove ${sym}" aria-label="Remove ${sym}">×</button></td>`;
+    const last = `<td class="num last hide-sm">${fmtPrice(q?.last)}</td>`;
+
+    // One cell per column (no colspan), as in the other views.
+    const placeholderRow = (content, cls = '') => `<tr class="${cls}" data-symbol="${sym}">${handle}${symCell}${last}
+      <td class="placeholder">${content}</td><td class="hide-sm"></td><td></td>${remove}</tr>`;
+    if (!sig) return placeholderRow('<span class="muted">Loading…</span>');
+    if (sig.error) {
+      const text = sig.code === PSE_EDGE_DOWN ? 'Signals unavailable' : sig.error;
+      return placeholderRow(`<span class="err">${escapeHtml(text)}</span>`, 'row-error');
+    }
+    const rsiCls = sig.rsi < 30 ? 'up' : sig.rsi > 70 ? 'down' : '';
+    const badges = sig.active.length
+      ? sig.active.map(({ name: key, date }) => {
+        const info = SIGNAL_INFO[key];
+        return `<span class="signal-badge ${info.cls}" title="${escapeHtml(`${info.short}: ${info.long} on ${fmtSignalDate(date, true)}`)}">${info.short} <span class="signal-date">${escapeHtml(fmtSignalDate(date))}</span></span>`;
+      }).join(' ')
+      : '<span class="muted">None</span>';
+    return `<tr data-symbol="${sym}">
+      ${handle}
+      ${symCell}
+      ${last}
+      <td class="num ${rsiCls}">${sig.rsi == null ? '–' : sig.rsi.toFixed(0)}</td>
+      <td class="num hide-sm" title="52-week closing high: ${fmtPrice(sig.high52)}">${fmtPct(sig.fromHigh * 100)}</td>
+      <td class="signal-cell">${badges}</td>
+      ${remove}
+    </tr>`;
+  }
+
+  function renderSignalsLegend() {
+    const show = state.settings.view === 'signals';
+    els.signalsLegend.hidden = !show;
+    const tr = state.trackRecord;
+    if (!show || !tr) return;
+    const pct = (x) => `${(x * 100).toFixed(1)}%`;
+    const line = (label, detail, r) => `<li><strong>${label}</strong>${detail}: up ${pct(r.upRate)} of the time, averaging ${fmtPct(r.avg * 100)}</li>`;
+    $('#signals-record').innerHTML = Object.entries(tr.signals)
+      .map(([key, r]) => line(SIGNAL_INFO[key].short, ` (${SIGNAL_INFO[key].long}, ${r.n} cases)`, r))
+      .join('') + line('Any day', ', for comparison', tr.baseline);
+    $('#signals-horizon').textContent = tr.horizonDays;
+  }
+
   function sectionSubtotalHtml(section) {
     let value = 0;
     let pl = 0;
@@ -654,6 +746,10 @@
       ['changePercent', '% Chg', 'num'], ['open', 'Open', 'num hide-sm'], ['high', 'High', 'num hide-sm'],
       ['low', 'Low', 'num hide-sm'], ['prevClose', 'Prev close', 'num hide-md'], ['volume', 'Volume', 'num hide-sm'],
       [null, '30 days', 'hide-md'],
+    ],
+    signals: [
+      ['symbol', 'Symbol', ''], ['last', 'Last', 'num hide-sm'], ['rsi', 'RSI (14)', 'num'],
+      ['fromHigh', 'From 52-wk high', 'num hide-sm'], [null, 'Signal (last 10 days)', ''],
     ],
     portfolio: [
       ['symbol', 'Symbol', ''], ['last', 'Last', 'num hide-sm'], ['marketValue', '<span class="hide-sm">Market value</span><span class="show-sm">Value · P/L</span>', 'num'],
@@ -700,6 +796,8 @@
       : t.positions ? 'P/L is before selling fees' : '');
   }
 
+  const ROW_HTML = { prices: rowHtml, portfolio: portfolioRowHtml, signals: signalRowHtml };
+
   function sectionHtml(section) {
     const id = escapeHtml(section.id);
     const name = escapeHtml(section.name);
@@ -725,7 +823,7 @@
     let body = '';
     if (!section.collapsed) {
       body = section.items.length
-        ? sortedItems(section.items).map(state.settings.view === 'portfolio' ? portfolioRowHtml : rowHtml).join('')
+        ? sortedItems(section.items).map(ROW_HTML[state.settings.view] || rowHtml).join('')
         : `<tr class="section-empty"><td></td><td colspan="${columnCount() - 1}" class="muted">No stocks yet. Search or pick from the list above, or drag a stock here.</td></tr>`;
     }
     return `<tbody class="section${section.collapsed ? ' collapsed' : ''}" data-section-id="${id}">${head}${body}</tbody>`;
@@ -767,6 +865,7 @@
     els.table.insertAdjacentHTML('beforeend', state.sections.map(sectionHtml).join(''));
     renderSortHeaders();
     renderPortfolioSummary();
+    renderSignalsLegend();
     renderAddTarget();
     renderBrowse();
     for (const q of state.quotes.values()) q.flash = '';
@@ -924,6 +1023,7 @@
     if (!keys.includes(state.settings.sort)) state.settings.sort = null;
     saveSettings();
     render();
+    loadMissingSignals();
   }
 
   for (const tab of els.viewTabs) tab.addEventListener('click', () => setView(tab.dataset.view));

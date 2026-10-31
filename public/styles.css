@@ -697,3 +697,22 @@ footer { max-width: 1520px; margin: 0 auto; padding: 8px 24px 32px; font-size: 1
   .index-toggle { gap: 8px; padding: 12px; }
   .index-headline { font-size: 12px; }
 }
+
+/* Signals view */
+.signal-cell { white-space: normal; }
+.signal-badge { display: inline-block; margin: 1px 0; padding: 2px 7px; border-radius: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.signal-badge.up { background: var(--up-bg); }
+.signal-badge.down { background: var(--down-bg); }
+.signal-date { font-weight: 400; opacity: 0.8; }
+.signals-legend {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.signals-legend h2 { margin: 0 0 6px; font-size: 14px; }
+.signals-legend p { margin: 6px 0; }
+.signals-legend ul { margin: 6px 0; padding-left: 18px; }
+.signals-legend li { margin: 3px 0; }
