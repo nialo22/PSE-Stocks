@@ -11,6 +11,11 @@ A small web app that shows near real-time Philippine Stock Exchange prices, pull
   estimated selling fees (broker commission + VAT, PSE fee + VAT, SCCP fee, 0.1% stock
   transaction tax); the commission rate and minimum are editable in Fee settings. Positions
   are saved only in your browser.
+- **Signals**: the Signals view shows each stock's RSI (14), how far it sits below its
+  52-week closing high, and any of three signals that fired in the last 10 trading days
+  (Oversold, Breakout, Overbought), with each signal's 5-year track record on PSEi stocks.
+  The track record comes from `node scripts/backtest.js --days 1825`; rerun it now and then
+  and update `TRACK_RECORD` in `lib/signals.js`. Educational information, not advice.
 - **Index summary**: PSEi and the sector indices (value, change, % change), market status,
   total volume, trades and value, and advances/declines/unchanged, refreshed with the
   watchlist. On wide screens it sits on the left; on phones and tablets it's a bar above the
@@ -83,6 +88,7 @@ PSE Edge has no public API, and browsers can't call it directly from another sit
 | `GET /api/companies`                 | `/companyDirectory/search.ax` (every listed company, all pages) |
 | `GET /api/quotes?symbols=JFC,ALI`    | `/companyPage/stockData.do` (stock data page, parsed from HTML) |
 | `GET /api/history?symbol=JFC&days=30`| `/common/DisclosureCht.ax` (daily price chart data)       |
+| `GET /api/signals?symbols=JFC,ALI`   | `/common/DisclosureCht.ax` (about 400 days, run through `lib/signals.js`) |
 
 The full company list is cached for 12 hours. Quotes are cached for 15 seconds on the server, so several open tabs don't multiply
 requests to PSE Edge. Companies with more than one listed security (for example common
